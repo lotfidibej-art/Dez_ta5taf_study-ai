@@ -7,11 +7,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     EMBEDDING_MODEL=BAAI/bge-small-en-v1.5 \
     WHISPER_MODEL_SIZE=small
 
-# Install minimal OS dependencies for audio processing and healthchecks
+# Install minimal OS dependencies for audio processing, OCR, and healthchecks
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
     curl \
+    tesseract-ocr \
+    tesseract-ocr-fra \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

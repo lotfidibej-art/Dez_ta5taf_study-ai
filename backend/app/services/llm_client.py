@@ -154,6 +154,20 @@ class GeminiLLMClient:
                         self.max_retries,
                     )
                     time.sleep(backoff)
+                elif tier == "reasoning" and model_name != self.fast_model:
+                    logger.warning(
+                        "Reasoning model %s unavailable (%s). Gracefully falling back to %s...",
+                        model_name,
+                        e,
+                        self.fast_model,
+                    )
+                    return self.generate_structured(
+                        prompt=prompt,
+                        schema=schema,
+                        tier="fast",
+                        system_instruction=system_instruction,
+                        temperature=temperature,
+                    )
                 else:
                     raise last_error
 

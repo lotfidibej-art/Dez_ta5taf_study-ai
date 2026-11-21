@@ -83,6 +83,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/init": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Initialize Session
+         * @description Initializes a full study session (Slice 2).
+         *
+         *     1. Ingests multimodal resources (PDFs, YouTube, Web), chunking & embedding into PostgreSQL.
+         *     2. Runs Agent 1 (Concept Extractor) to generate a topological NetworkX DAG.
+         *     3. Runs Agent 2 (Domain Profiler) to load technique weights and cross-domain anchor concepts.
+         *     4. Runs Diagnostic Agent to generate 3 open-ended baseline questions.
+         *     5. Caches SessionState in Redis with 24h TTL.
+         */
+        post: operations["initialize_session_api_v1_sessions_init_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/diagnostic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Diagnostic Answers
+         * @description Evaluates the student's 3 diagnostic answers (Agent 3) and enters the adaptive loop.
+         */
+        post: operations["submit_diagnostic_answers_api_v1_sessions__session_id__diagnostic_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/slice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Context Slice
+         * @description Inspects the deterministic 1-hop context slice provided to downstream pedagogical agents.
+         */
+        get: operations["get_session_context_slice_api_v1_sessions__session_id__slice_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/voice/analyze": {
         parameters: {
             query?: never;
@@ -114,6 +180,48 @@ export interface components {
              * @description Audio file of student voice response (wav/mp3/m4a/webm)
              */
             file: string;
+        };
+        /** Body_initialize_session_api_v1_sessions_init_post */
+        Body_initialize_session_api_v1_sessions_init_post: {
+            /**
+             * Student Id
+             * @description Student identifier
+             * @default student_dev_01
+             */
+            student_id: string;
+            /**
+             * Domain
+             * @description Academic field
+             * @default computer_science
+             */
+            domain: string;
+            /**
+             * Topic Title
+             * @description Primary topic to study
+             */
+            topic_title: string;
+            /**
+             * Mode
+             * @description Learning mode: AI_GUIDED or SELF_GUIDED
+             * @default AI_GUIDED
+             */
+            mode: string;
+            /**
+             * Resource Scope
+             * @description STRICT_UPLOAD_ONLY or ENRICHED_EXTERNAL
+             * @default STRICT_UPLOAD_ONLY
+             */
+            resource_scope: string;
+            /**
+             * Urls
+             * @description Comma or newline-separated URLs (web articles, YouTube)
+             */
+            urls?: string | null;
+            /**
+             * Files
+             * @description Uploaded PDF/text resources
+             */
+            files?: string[] | null;
         };
         /**
          * ConceptNodeState
@@ -154,6 +262,93 @@ export interface components {
              * @default 0
              */
             attempts: number;
+            /**
+             * Summary Hook
+             * @description Concise 1-2 sentence core mental model hook.
+             */
+            summary_hook?: string | null;
+        };
+        /** DiagnosticAnswer */
+        DiagnosticAnswer: {
+            /**
+             * Question Id
+             * @description Matched question identifier.
+             */
+            question_id: string;
+            /**
+             * Concept Id
+             * @description Target concept identifier.
+             */
+            concept_id: string;
+            /**
+             * Answer Text
+             * @description Student's typed or transcribed answer.
+             */
+            answer_text: string;
+        };
+        /** DiagnosticEvaluationItem */
+        DiagnosticEvaluationItem: {
+            /** Question Id */
+            question_id: string;
+            /** Concept Id */
+            concept_id: string;
+            /** Factual Accuracy */
+            factual_accuracy: number;
+            /** Causal Depth */
+            causal_depth: number;
+            /** Feedback */
+            feedback: string;
+            /** Identified Misconception */
+            identified_misconception?: string | null;
+        };
+        /** DiagnosticEvaluationResponse */
+        DiagnosticEvaluationResponse: {
+            session: components["schemas"]["SessionState"];
+            /** Evaluations */
+            evaluations: components["schemas"]["DiagnosticEvaluationItem"][];
+            /** Action */
+            action: components["schemas"]["FoundationBoardPayload"] | components["schemas"]["FadedWorkspacePayload"] | components["schemas"]["MisconceptionTrapPayload"] | components["schemas"]["ProtegeStagePayload"];
+            /** Overall Initial Rating */
+            overall_initial_rating: number;
+            /** Summary */
+            summary: string;
+        };
+        /** DiagnosticQuestion */
+        DiagnosticQuestion: {
+            /**
+             * Question Id
+             * @description Unique question identifier.
+             */
+            question_id: string;
+            /**
+             * Concept Id
+             * @description Target DAG concept identifier.
+             */
+            concept_id: string;
+            /**
+             * Concept Title
+             * @description Target concept title.
+             */
+            concept_title: string;
+            /**
+             * Question Text
+             * @description Open-ended question testing causal understanding.
+             */
+            question_text: string;
+            /**
+             * Depth Tier
+             * @description Topological layer depth.
+             * @enum {string}
+             */
+            depth_tier: "FOUNDATIONAL" | "INTERMEDIATE" | "ADVANCED";
+        };
+        /** DiagnosticSubmission */
+        DiagnosticSubmission: {
+            /**
+             * Answers
+             * @description Answers to the 3 diagnostic questions.
+             */
+            answers: components["schemas"]["DiagnosticAnswer"][];
         };
         /**
          * FadedWorkspacePayload
@@ -333,6 +528,18 @@ export interface components {
              */
             require_voice_input: boolean;
         };
+        /** SessionInitResponse */
+        SessionInitResponse: {
+            session: components["schemas"]["SessionState"];
+            /** Diagnostic Questions */
+            diagnostic_questions: components["schemas"]["DiagnosticQuestion"][];
+            /**
+             * Extracted Chunk Count
+             * @description Number of source chunks ingested.
+             * @default 0
+             */
+            extracted_chunk_count: number;
+        };
         /**
          * SessionState
          * @description Canonical session snapshot persisted in Redis and passed across LangGraph nodes.
@@ -402,6 +609,13 @@ export interface components {
              * @description Accumulated active misconceptions flagged during turns.
              */
             detected_misconceptions?: string[];
+            /**
+             * Mastered Anchor Concepts
+             * @description Cross-domain mastered concepts available for analogy bridges.
+             */
+            mastered_anchor_concepts?: {
+                [key: string]: string;
+            }[];
             /**
              * Last Technique Used
              * @description Identifier of the most recent pedagogical technique rendered.
@@ -524,6 +738,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    initialize_session_api_v1_sessions_init_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_initialize_session_api_v1_sessions_init_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_diagnostic_answers_api_v1_sessions__session_id__diagnostic_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiagnosticSubmission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticEvaluationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_context_slice_api_v1_sessions__session_id__slice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

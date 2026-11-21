@@ -90,3 +90,26 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_event_type
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_created_at 
     ON telemetry_events (created_at DESC);
+
+-- 7. Resource Chunks Table (Multimodal RAG chunks with 384-d embeddings)
+CREATE TABLE IF NOT EXISTS resource_chunks (
+    chunk_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id TEXT NOT NULL,
+    student_id TEXT NOT NULL,
+    concept_id TEXT,
+    content TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    source_location TEXT NOT NULL,
+    embedding vector(384),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_resource_chunks_embedding 
+    ON resource_chunks USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_resource_chunks_session 
+    ON resource_chunks (session_id);
+
+CREATE INDEX IF NOT EXISTS idx_resource_chunks_concept 
+    ON resource_chunks (concept_id);
+

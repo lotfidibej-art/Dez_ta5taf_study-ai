@@ -29,6 +29,10 @@ class ConceptNodeState(BaseModel):
         ge=0,
         description="Number of interaction turns completed on this concept.",
     )
+    summary_hook: Optional[str] = Field(
+        default=None,
+        description="Concise 1-2 sentence core mental model hook.",
+    )
 
 
 class SessionState(BaseModel):
@@ -70,6 +74,10 @@ class SessionState(BaseModel):
     detected_misconceptions: List[str] = Field(
         default_factory=list,
         description="Accumulated active misconceptions flagged during turns.",
+    )
+    mastered_anchor_concepts: List[Dict[str, str]] = Field(
+        default_factory=list,
+        description="Cross-domain mastered concepts available for analogy bridges.",
     )
     last_technique_used: str = Field(
         default="INITIAL_DIAGNOSTIC",
@@ -268,3 +276,61 @@ class MockSessionResponse(BaseModel):
     """Response containing initialized SessionState and selected AgentActionPayload."""
     session: SessionState
     action: AgentActionPayload
+
+
+# ==============================================================================
+# 5. Multimodal Ingestion & Baseline Diagnostic Models (Slice 2)
+# ==============================================================================
+
+class ResourceChunk(BaseModel):
+    chunk_id: str
+    session_id: str
+    student_id: str
+    concept_id: Optional[str] = None
+    content: str
+    source_name: str
+    source_location: str
+
+
+class DiagnosticQuestion(BaseModel):
+    question_id: str = Field(..., description="Unique question identifier.")
+    concept_id: str = Field(..., description="Target DAG concept identifier.")
+    concept_title: str = Field(..., description="Target concept title.")
+    question_text: str = Field(..., description="Open-ended question testing causal understanding.")
+    depth_tier: Literal["FOUNDATIONAL", "INTERMEDIATE", "ADVANCED"] = Field(
+        ..., description="Topological layer depth."
+    )
+
+
+class DiagnosticAnswer(BaseModel):
+    question_id: str = Field(..., description="Matched question identifier.")
+    concept_id: str = Field(..., description="Target concept identifier.")
+    answer_text: str = Field(..., description="Student's typed or transcribed answer.")
+
+
+class DiagnosticSubmission(BaseModel):
+    answers: List[DiagnosticAnswer] = Field(..., description="Answers to the 3 diagnostic questions.")
+
+
+class SessionInitResponse(BaseModel):
+    session: SessionState
+    diagnostic_questions: List[DiagnosticQuestion]
+    extracted_chunk_count: int = Field(default=0, description="Number of source chunks ingested.")
+
+
+class DiagnosticEvaluationItem(BaseModel):
+    question_id: str
+    concept_id: str
+    factual_accuracy: float = Field(..., ge=0.0, le=1.0)
+    causal_depth: float = Field(..., ge=0.0, le=1.0)
+    feedback: str
+    identified_misconception: Optional[str] = None
+
+
+class DiagnosticEvaluationResponse(BaseModel):
+    session: SessionState
+    evaluations: List[DiagnosticEvaluationItem]
+    action: AgentActionPayload
+    overall_initial_rating: float
+    summary: str
+

@@ -9,12 +9,19 @@ import {
   ProtegeStagePayload,
   HealthCheckResponse,
   SessionState,
+  DiagnosticQuestion,
+  DiagnosticEvaluationResponse,
+  SessionInitResponse,
   createMockSession,
   getHealthStatus,
   getSessionState,
+  getSessionSlice,
 } from "@/lib/api";
+import { SessionOnboardingModal } from "@/components/SessionOnboardingModal";
+import { BaselineDiagnosticCard } from "@/components/BaselineDiagnosticCard";
+import { ConceptProgressStrip } from "@/components/ConceptProgressStrip";
 
-export default function WalkingSkeletonPage() {
+export default function AdaptiveLearningPlatformPage() {
   // System Health State
   const [health, setHealth] = useState<HealthCheckResponse | null>(null);
   const [healthLoading, setHealthLoading] = useState<boolean>(true);
@@ -25,7 +32,15 @@ export default function WalkingSkeletonPage() {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Form Controls
+  // Slice 2 States
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState<boolean>(false);
+  const [diagnosticQuestions, setDiagnosticQuestions] = useState<DiagnosticQuestion[]>([]);
+  const [lastEvaluation, setLastEvaluation] = useState<DiagnosticEvaluationResponse | null>(null);
+  const [contextSlice, setContextSlice] = useState<Record<string, unknown> | null>(null);
+  const [isSliceDrawerOpen, setIsSliceDrawerOpen] = useState<boolean>(false);
+  const [sliceLoading, setSliceLoading] = useState<boolean>(false);
+
+  // Quick Mock Controls
   const [studentId, setStudentId] = useState<string>("student_dev_01");
   const [domain, setDomain] = useState<string>("computer_science");
   const [topicTitle, setTopicTitle] = useState<string>("Recursion & Call Stacks");
@@ -76,12 +91,14 @@ export default function WalkingSkeletonPage() {
     };
   }, []);
 
-  // 2. Launch Mock Session via LangGraph
-  const handleLaunchSession = (rating: number) => {
+  // 2. Launch Mock Session via LangGraph (Slice 1 Fallback/Test)
+  const handleLaunchMockSession = (rating: number) => {
     setInitialRating(rating);
     setError(null);
     setShowFlawAnswer(false);
     setUserFadedInput("");
+    setDiagnosticQuestions([]);
+    setLastEvaluation(null);
 
     startTransition(async () => {
       try {
@@ -104,7 +121,39 @@ export default function WalkingSkeletonPage() {
     });
   };
 
-  // 3. Reload Session directly from Redis Cache
+  // 3. Slice 2: Session Initialized from Modal
+  const handleSessionInitialized = (initData: SessionInitResponse) => {
+    setSession(initData.session);
+    setDiagnosticQuestions(initData.diagnostic_questions);
+    setAction(null);
+    setLastEvaluation(null);
+    setError(null);
+  };
+
+  // 4. Slice 2: Diagnostic Submitted
+  const handleDiagnosticCompleted = (evalResult: DiagnosticEvaluationResponse) => {
+    setSession(evalResult.session);
+    setAction(evalResult.action);
+    setLastEvaluation(evalResult);
+    setDiagnosticQuestions([]);
+  };
+
+  // 5. Slice 2: Fetch 1-Hop Slicer Context
+  const handleFetchContextSlice = async () => {
+    if (!session?.session_id) return;
+    setSliceLoading(true);
+    try {
+      const sliceData = await getSessionSlice(session.session_id);
+      setContextSlice(sliceData);
+      setIsSliceDrawerOpen(true);
+    } catch (err: unknown) {
+      console.error("Error fetching slice:", err);
+    } finally {
+      setSliceLoading(false);
+    }
+  };
+
+  // 6. Reload Session from Redis
   const handleReloadFromRedis = async () => {
     if (!session?.session_id) return;
     setRedisReloading(true);
@@ -122,7 +171,7 @@ export default function WalkingSkeletonPage() {
     }
   };
 
-  // 4. Exhaustive Discriminator Switch Renderer
+  // Render Action Payload Component
   const renderActionComponent = (act: AgentActionPayload) => {
     switch (act.ui_component) {
       case "FOUNDATION_BOARD":
@@ -145,7 +194,7 @@ export default function WalkingSkeletonPage() {
   };
 
   const renderFoundationBoard = (data: FoundationBoardPayload) => (
-    <div className="border border-sky-200 bg-sky-50/50 dark:bg-sky-950/20 dark:border-sky-800 rounded-xl p-6 shadow-sm space-y-6">
+    <div className="border border-sky-200 bg-sky-50/50 dark:bg-sky-950/20 dark:border-sky-800 rounded-2xl p-6 shadow-sm space-y-6">
       <div className="flex items-center justify-between border-b border-sky-200 dark:border-sky-800 pb-3">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-400">
@@ -160,7 +209,6 @@ export default function WalkingSkeletonPage() {
         </span>
       </div>
 
-      {/* Bullet Breakdown */}
       <div className="space-y-2">
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
           Essential Concepts:
@@ -175,21 +223,19 @@ export default function WalkingSkeletonPage() {
         </ul>
       </div>
 
-      {/* Mermaid Diagram Box */}
       {data.mermaid_diagram && (
         <div className="space-y-2">
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             Structural Execution Flow (Mermaid Diagram):
           </h4>
-          <pre className="p-4 rounded-lg bg-gray-900 text-sky-300 font-mono text-xs overflow-x-auto border border-gray-800">
+          <pre className="p-4 rounded-xl bg-gray-900 text-sky-300 font-mono text-xs overflow-x-auto border border-gray-800">
             {data.mermaid_diagram}
           </pre>
         </div>
       )}
 
-      {/* Bridge Analogy */}
       {data.bridge_analogy && (
-        <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg space-y-2">
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl space-y-2">
           <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-semibold text-sm">
             <span>🌉</span>
             <span>Cross-Domain Bridge Analogy</span>
@@ -214,10 +260,9 @@ export default function WalkingSkeletonPage() {
         </div>
       )}
 
-      {/* Interactive Lab Link & Study Nudge */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
         {data.interactive_lab && (
-          <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg flex items-center justify-between">
+          <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-gray-900 dark:text-gray-100">
                 {data.interactive_lab.platform || "Interactive Sandbox"}
@@ -231,7 +276,7 @@ export default function WalkingSkeletonPage() {
                 href={data.interactive_lab.lab_url}
                 target="_blank"
                 rel="noreferrer"
-                className="ml-3 px-3 py-1.5 bg-sky-600 text-white rounded text-xs font-medium hover:bg-sky-700 transition"
+                className="ml-3 px-3 py-1.5 bg-sky-600 text-white rounded-lg text-xs font-medium hover:bg-sky-700 transition"
               >
                 Launch Lab ↗
               </a>
@@ -240,7 +285,7 @@ export default function WalkingSkeletonPage() {
         )}
 
         {data.study_habit_nudge && (
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl">
             <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
               💡 Study Habit Nudge
             </p>
@@ -254,7 +299,7 @@ export default function WalkingSkeletonPage() {
   );
 
   const renderFadedWorkspace = (data: FadedWorkspacePayload) => (
-    <div className="border border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800 rounded-xl p-6 shadow-sm space-y-6">
+    <div className="border border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800 rounded-2xl p-6 shadow-sm space-y-6">
       <div className="flex items-center justify-between border-b border-amber-200 dark:border-amber-800 pb-3">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
@@ -269,7 +314,7 @@ export default function WalkingSkeletonPage() {
         </span>
       </div>
 
-      <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+      <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
         <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
           Problem Objective:
         </span>
@@ -278,7 +323,6 @@ export default function WalkingSkeletonPage() {
         </p>
       </div>
 
-      {/* Step Sequence */}
       <div className="space-y-4">
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
           Guided Steps:
@@ -288,7 +332,7 @@ export default function WalkingSkeletonPage() {
           return (
             <div
               key={idx}
-              className={`p-4 rounded-lg border transition ${
+              className={`p-4 rounded-xl border transition ${
                 isWorked
                   ? "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
                   : "bg-amber-100/60 dark:bg-amber-900/40 border-amber-400 dark:border-amber-600 shadow-sm"
@@ -320,14 +364,13 @@ export default function WalkingSkeletonPage() {
                 </span>
               </div>
 
-              {/* Code representation */}
               {isWorked ? (
-                <pre className="p-3 rounded bg-gray-950 text-emerald-400 font-mono text-xs overflow-x-auto">
+                <pre className="p-3 rounded-lg bg-gray-950 text-emerald-400 font-mono text-xs overflow-x-auto">
                   {String(step.code || "")}
                 </pre>
               ) : (
                 <div className="space-y-2 mt-2">
-                  <pre className="p-3 rounded bg-gray-950 text-amber-300 font-mono text-xs overflow-x-auto">
+                  <pre className="p-3 rounded-lg bg-gray-950 text-amber-300 font-mono text-xs overflow-x-auto">
                     {String(step.code || "return n + _______")}
                   </pre>
                   <div className="flex gap-2 items-center">
@@ -336,12 +379,12 @@ export default function WalkingSkeletonPage() {
                       placeholder="Type the missing recursive call..."
                       value={userFadedInput}
                       onChange={(e) => setUserFadedInput(e.target.value)}
-                      className="flex-1 px-3 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
+                      className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => alert(`Submitted response: ${userFadedInput}`)}
-                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold"
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold"
                     >
                       Check Answer
                     </button>
@@ -359,9 +402,8 @@ export default function WalkingSkeletonPage() {
         })}
       </div>
 
-      {/* Active Hint Ladder */}
       {data.active_hint && (
-        <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs space-y-1">
+        <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl text-xs space-y-1">
           <span className="font-semibold text-blue-800 dark:text-blue-300">
             🔍 Level {String(data.active_hint.level || 1)} Contingent Hint:
           </span>
@@ -374,7 +416,7 @@ export default function WalkingSkeletonPage() {
   );
 
   const renderMisconceptionTrap = (data: MisconceptionTrapPayload) => (
-    <div className="border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 dark:border-rose-800 rounded-xl p-6 shadow-sm space-y-6">
+    <div className="border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 dark:border-rose-800 rounded-2xl p-6 shadow-sm space-y-6">
       <div className="flex items-center justify-between border-b border-rose-200 dark:border-rose-800 pb-3">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">
@@ -389,7 +431,7 @@ export default function WalkingSkeletonPage() {
         </span>
       </div>
 
-      <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+      <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
         <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
           Challenge Scenario:
         </span>
@@ -407,7 +449,7 @@ export default function WalkingSkeletonPage() {
             ⚠️ Contains 1 Subtle Conceptual Flaw
           </span>
         </div>
-        <pre className="p-4 rounded-lg bg-gray-950 text-rose-300 font-mono text-xs overflow-x-auto border border-rose-900/50">
+        <pre className="p-4 rounded-xl bg-gray-950 text-rose-300 font-mono text-xs overflow-x-auto border border-rose-900/50">
           {data.flawed_artifact}
         </pre>
       </div>
@@ -422,7 +464,7 @@ export default function WalkingSkeletonPage() {
         </button>
 
         {showFlawAnswer && (
-          <span className="px-3 py-1 bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-100 rounded text-xs font-mono font-bold">
+          <span className="px-3 py-1 bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-100 rounded-lg text-xs font-mono font-bold">
             {data.hidden_flaw_tag}
           </span>
         )}
@@ -431,7 +473,7 @@ export default function WalkingSkeletonPage() {
   );
 
   const renderProtegeStage = (data: ProtegeStagePayload) => (
-    <div className="border border-purple-200 bg-purple-50/50 dark:bg-purple-950/20 dark:border-purple-800 rounded-xl p-6 shadow-sm space-y-6">
+    <div className="border border-purple-200 bg-purple-50/50 dark:bg-purple-950/20 dark:border-purple-800 rounded-2xl p-6 shadow-sm space-y-6">
       <div className="flex items-center justify-between border-b border-purple-200 dark:border-purple-800 pb-3">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">
@@ -446,7 +488,7 @@ export default function WalkingSkeletonPage() {
         </span>
       </div>
 
-      <div className="p-4 bg-white dark:bg-gray-900 border-l-4 border-purple-500 rounded-r-lg">
+      <div className="p-4 bg-white dark:bg-gray-900 border-l-4 border-purple-500 rounded-r-xl">
         <p className="text-xs font-bold text-purple-600 uppercase tracking-wider">
           AI Student Persona Asks:
         </p>
@@ -473,7 +515,7 @@ export default function WalkingSkeletonPage() {
         <button
           type="button"
           onClick={() => setIsRecording(!isRecording)}
-          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition ${
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
             isRecording
               ? "bg-red-600 text-white animate-pulse"
               : "bg-purple-600 hover:bg-purple-700 text-white"
@@ -501,68 +543,78 @@ export default function WalkingSkeletonPage() {
               <h1 className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">
                 Adaptive AI Learning Platform
               </h1>
-              <span className="px-2 py-0.5 text-xs font-mono font-semibold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 rounded">
-                Slice 1: Walking Skeleton
+              <span className="px-2 py-0.5 text-xs font-mono font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200 rounded">
+                Slice 2: Multimodal Ingestion &amp; DAG
               </span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              LangGraph State Machine • Discriminated UI Routing • Redis Contract Cache
+              NetworkX DAG • Deterministic 1-Hop Slicer • Baseline Diagnostic • Gemini 3.8 Evaluator
             </p>
           </div>
 
-          {/* Health Indicators */}
-          <div className="flex items-center gap-2 text-xs flex-wrap">
+          {/* Health Indicators & Onboarding Trigger */}
+          <div className="flex items-center gap-3 flex-wrap">
             <button
-              onClick={refreshHealth}
-              disabled={healthLoading}
-              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded text-gray-500"
-              title="Refresh Health"
+              onClick={() => setIsOnboardingOpen(true)}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition flex items-center gap-1.5"
             >
-              🔄
+              <span>✨</span>
+              <span>New Ingestion Session (Slice 2)</span>
             </button>
-            <span
-              className={`px-2 py-1 rounded-md font-mono flex items-center gap-1.5 border ${
-                health?.components?.postgres === "connected"
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                  : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Postgres: {health?.components?.postgres || "connecting..."}
-            </span>
 
-            <span
-              className={`px-2 py-1 rounded-md font-mono flex items-center gap-1.5 border ${
-                health?.components?.redis === "connected"
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                  : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Redis: {health?.components?.redis || "connecting..."}
-            </span>
+            <div className="flex items-center gap-2 text-xs flex-wrap">
+              <button
+                onClick={refreshHealth}
+                disabled={healthLoading}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded text-gray-500"
+                title="Refresh Health"
+              >
+                🔄
+              </button>
+              <span
+                className={`px-2 py-1 rounded-md font-mono flex items-center gap-1.5 border ${
+                  health?.components?.postgres === "connected"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                    : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Postgres: {health?.components?.postgres || "connecting..."}
+              </span>
 
-            <span
-              className={`px-2 py-1 rounded-md font-mono flex items-center gap-1.5 border ${
-                health?.components?.embeddings === "ready"
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                  : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              BGE-Embed: {health?.components?.embeddings || "loading..."}
-            </span>
+              <span
+                className={`px-2 py-1 rounded-md font-mono flex items-center gap-1.5 border ${
+                  health?.components?.redis === "connected"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                    : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Redis: {health?.components?.redis || "connecting..."}
+              </span>
 
-            <span
-              className={`px-2 py-1 rounded-md font-mono flex items-center gap-1.5 border ${
-                health?.components?.whisper === "ready"
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                  : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Whisper: {health?.components?.whisper || "loading..."}
-            </span>
+              <span
+                className={`px-2 py-1 rounded-md font-mono flex items-center gap-1.5 border ${
+                  health?.components?.embeddings === "ready"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                    : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                BGE-Embed: {health?.components?.embeddings || "loading..."}
+              </span>
+
+              <span
+                className={`px-2 py-1 rounded-md font-mono flex items-center gap-1.5 border ${
+                  health?.components?.whisper === "ready"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                    : "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                Whisper: {health?.components?.whisper || "loading..."}
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -571,11 +623,20 @@ export default function WalkingSkeletonPage() {
       <main className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Control Panel */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm space-y-4">
-            <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <span>🎛️</span>
-              <span>Session Starter Controls</span>
-            </h2>
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <span>🎛️</span>
+                <span>Session Controls</span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsOnboardingOpen(true)}
+                className="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline"
+              >
+                + New Ingestion
+              </button>
+            </div>
 
             <div className="space-y-3 text-xs">
               <div>
@@ -586,7 +647,7 @@ export default function WalkingSkeletonPage() {
                   type="text"
                   value={studentId}
                   onChange={(e) => setStudentId(e.target.value)}
-                  className="mt-1 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-mono"
+                  className="mt-1 w-full px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-mono"
                 />
               </div>
 
@@ -597,11 +658,12 @@ export default function WalkingSkeletonPage() {
                 <select
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
-                  className="mt-1 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-medium"
+                  className="mt-1 w-full px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-medium"
                 >
                   <option value="computer_science">Computer Science</option>
                   <option value="biology">Cellular &amp; Molecular Biology</option>
                   <option value="mathematics">Discrete Mathematics</option>
+                  <option value="physics">Classical &amp; Quantum Physics</option>
                 </select>
               </div>
 
@@ -613,7 +675,7 @@ export default function WalkingSkeletonPage() {
                   type="text"
                   value={topicTitle}
                   onChange={(e) => setTopicTitle(e.target.value)}
-                  className="mt-1 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-medium"
+                  className="mt-1 w-full px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-medium"
                 />
               </div>
             </div>
@@ -621,15 +683,15 @@ export default function WalkingSkeletonPage() {
             {/* Quick Trigger Tier Buttons */}
             <div className="pt-2 border-t border-gray-200 dark:border-gray-800 space-y-2">
               <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-                Trigger LangGraph State Machine:
+                Trigger LangGraph Starter Skeleton:
               </label>
               <div className="grid grid-cols-1 gap-2">
                 <button
                   type="button"
                   disabled={isPending}
-                  onClick={() => handleLaunchSession(0.25)}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold text-left transition flex items-center justify-between ${
-                    initialRating === 0.25 && session
+                  onClick={() => handleLaunchMockSession(0.25)}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition flex items-center justify-between ${
+                    initialRating === 0.25 && session && !diagnosticQuestions.length
                       ? "bg-sky-600 text-white"
                       : "bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 border border-sky-300 dark:border-sky-800 hover:bg-sky-100"
                   }`}
@@ -641,9 +703,9 @@ export default function WalkingSkeletonPage() {
                 <button
                   type="button"
                   disabled={isPending}
-                  onClick={() => handleLaunchSession(0.55)}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold text-left transition flex items-center justify-between ${
-                    initialRating === 0.55 && session
+                  onClick={() => handleLaunchMockSession(0.55)}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition flex items-center justify-between ${
+                    initialRating === 0.55 && session && !diagnosticQuestions.length
                       ? "bg-amber-600 text-white"
                       : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800 hover:bg-amber-100"
                   }`}
@@ -655,9 +717,9 @@ export default function WalkingSkeletonPage() {
                 <button
                   type="button"
                   disabled={isPending}
-                  onClick={() => handleLaunchSession(0.85)}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold text-left transition flex items-center justify-between ${
-                    initialRating === 0.85 && session
+                  onClick={() => handleLaunchMockSession(0.85)}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition flex items-center justify-between ${
+                    initialRating === 0.85 && session && !diagnosticQuestions.length
                       ? "bg-rose-600 text-white"
                       : "bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-300 dark:border-rose-800 hover:bg-rose-100"
                   }`}
@@ -668,7 +730,6 @@ export default function WalkingSkeletonPage() {
               </div>
             </div>
 
-            {/* Error Message */}
             {error && (
               <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-300">
                 {error}
@@ -676,38 +737,52 @@ export default function WalkingSkeletonPage() {
             )}
           </div>
 
-          {/* Redis Drawer Trigger */}
+          {/* Redis Drawer & 1-Hop Slicer Trigger */}
           {session && (
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm space-y-3">
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 shadow-sm space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                   <span>💾</span>
-                  <span>Redis Session Cache</span>
+                  <span>Redis &amp; Context Inspector</span>
                 </span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
                   TTL 24h
                 </span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
                 Key: session:{session.session_id}
               </p>
-              <div className="flex gap-2">
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setIsDrawerOpen(!isDrawerOpen)}
-                  className="flex-1 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-xs font-medium"
+                  className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-xs font-medium"
                 >
-                  {isDrawerOpen ? "Hide State JSON" : "Inspect State JSON"}
+                  {isDrawerOpen ? "Hide Redis JSON" : "Inspect Redis"}
                 </button>
+
+                <button
+                  type="button"
+                  disabled={sliceLoading}
+                  onClick={handleFetchContextSlice}
+                  className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 rounded-lg text-xs font-semibold"
+                >
+                  {sliceLoading ? "Loading Slice..." : "🔍 1-Hop Slice"}
+                </button>
+              </div>
+
+              <div className="pt-1">
                 <button
                   type="button"
                   disabled={redisReloading}
                   onClick={handleReloadFromRedis}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium disabled:opacity-50"
+                  className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium disabled:opacity-50"
                 >
-                  {redisReloading ? "..." : "Reload from Redis"}
+                  {redisReloading ? "Reloading..." : "Reload from Redis Cache"}
                 </button>
               </div>
+
               {redisMessage && (
                 <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
                   {redisMessage}
@@ -721,72 +796,72 @@ export default function WalkingSkeletonPage() {
         <div className="lg:col-span-8 space-y-6">
           {session ? (
             <div className="space-y-6">
-              {/* Active Session Meta Card */}
-              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <span className="text-xs font-mono text-gray-400">
-                      ID: {session.session_id}
-                    </span>
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                      {session.topic_title}
-                    </h2>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-gray-700 dark:text-gray-300">
-                      Mode: {session.mode}
-                    </span>
-                    <span className="text-xs font-mono px-2 py-1 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded border border-blue-200 dark:border-blue-800">
-                      Last Tech: {session.last_technique_used}
-                    </span>
-                  </div>
-                </div>
+              {/* Concept Progress Strip (Extracted DAG) */}
+              <ConceptProgressStrip
+                conceptGraph={session.concept_graph || []}
+                activeConceptId={session.active_concept_id}
+              />
 
-                {/* Concept Nodes Progress */}
-                <div className="space-y-1.5 pt-2 border-t border-gray-100 dark:border-gray-800">
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>Syllabus Concept Graph</span>
-                    <span>Active: {session.active_concept_id}</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {(session.concept_graph ?? []).map((node) => (
-                      <div
-                        key={node.concept_id}
-                        className={`p-2.5 rounded-lg border text-xs ${
-                          node.concept_id === session.active_concept_id
-                            ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/40"
-                            : "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900"
-                        }`}
-                      >
-                        <div className="font-semibold truncate text-gray-900 dark:text-gray-100">
-                          {node.title}
-                        </div>
-                        <div className="flex justify-between items-center mt-1 text-[11px] text-gray-500">
-                          <span>Rating: {(node.mastery_rating * 100).toFixed(0)}%</span>
-                          <span
-                            className={`px-1.5 py-0.2 rounded font-mono text-[10px] ${
-                              node.status === "MASTERED"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : node.status === "ACTIVE"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-gray-200 text-gray-700"
-                            }`}
-                          >
-                            {node.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              {/* Baseline Diagnostic Form (if questions pending) */}
+              {diagnosticQuestions.length > 0 && (
+                <BaselineDiagnosticCard
+                  sessionId={session.session_id}
+                  topicTitle={session.topic_title}
+                  questions={diagnosticQuestions}
+                  onDiagnosticCompleted={handleDiagnosticCompleted}
+                />
+              )}
 
-              {/* Action Component Rendered via Discriminated Union */}
+              {/* Evaluation Feedback Banner (if diagnostic just completed) */}
+              {lastEvaluation && (
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                      <span>🎯</span>
+                      <span>Baseline Evaluation Completed</span>
+                    </span>
+                    <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100">
+                      Overall Rating: {(lastEvaluation.overall_initial_rating * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-900 dark:text-emerald-200">
+                    {lastEvaluation.summary}
+                  </p>
+                </div>
+              )}
+
+              {/* Active Pedagogical Component */}
               {action && renderActionComponent(action)}
+
+              {/* 1-Hop Slicer Context Drawer */}
+              {isSliceDrawerOpen && contextSlice && (
+                <div className="bg-gray-900 border border-purple-500/50 rounded-2xl p-4 shadow-xl text-gray-100 space-y-2">
+                  <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-purple-400 text-sm">🔍</span>
+                      <span className="text-xs font-mono font-bold text-purple-300">
+                        Deterministic 1-Hop Context Slice (Downstream Agent Context)
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setIsSliceDrawerOpen(false)}
+                      className="text-xs text-gray-400 hover:text-white"
+                    >
+                      ✕ Close
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    Downstream LLMs only ever see this slice (active concept + top 2 resource chunks, immediate prerequisites, and next unlocked child):
+                  </p>
+                  <pre className="p-3 bg-gray-950 rounded-xl text-purple-300 font-mono text-xs overflow-x-auto max-h-96">
+                    {JSON.stringify(contextSlice, null, 2)}
+                  </pre>
+                </div>
+              )}
 
               {/* Live Redis Session JSON Inspector Drawer */}
               {isDrawerOpen && (
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 shadow-lg text-gray-100 space-y-2">
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-lg text-gray-100 space-y-2">
                   <div className="flex justify-between items-center border-b border-gray-800 pb-2">
                     <span className="text-xs font-mono font-bold text-gray-300">
                       Redis Snapshot: session:{session.session_id}
@@ -798,26 +873,40 @@ export default function WalkingSkeletonPage() {
                       ✕ Close
                     </button>
                   </div>
-                  <pre className="p-3 bg-gray-950 rounded text-emerald-400 font-mono text-xs overflow-x-auto max-h-96">
+                  <pre className="p-3 bg-gray-950 rounded-xl text-emerald-400 font-mono text-xs overflow-x-auto max-h-96">
                     {JSON.stringify(session, null, 2)}
                   </pre>
                 </div>
               )}
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-800 rounded-xl p-12 text-center space-y-3">
-              <span className="text-4xl">🚀</span>
+            <div className="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-800 rounded-2xl p-12 text-center space-y-4">
+              <span className="text-5xl">🚀</span>
               <h3 className="text-base font-bold text-gray-800 dark:text-gray-200">
-                Walking Skeleton Console Ready
+                Adaptive AI Workspace Ready
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-                Choose an initial mastery rating on the left control panel to trigger the LangGraph
-                state machine and render the corresponding discriminated UI component.
+                Start a full Multimodal Ingestion session with PDFs or YouTube/Web URLs, or trigger a quick mock session from the left control panel.
               </p>
+              <button
+                type="button"
+                onClick={() => setIsOnboardingOpen(true)}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition inline-flex items-center gap-2"
+              >
+                <span>✨</span>
+                <span>Open Session Onboarding Modal (Slice 2)</span>
+              </button>
             </div>
           )}
         </div>
       </main>
+
+      {/* Onboarding Modal */}
+      <SessionOnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onSessionInitialized={handleSessionInitialized}
+      />
     </div>
   );
 }

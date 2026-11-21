@@ -11,6 +11,13 @@ from app.schemas.contracts import (
     SessionResumeArtifact,
     MockSessionRequest,
     MockSessionResponse,
+    ResourceChunk,
+    DiagnosticQuestion,
+    DiagnosticAnswer,
+    DiagnosticSubmission,
+    SessionInitResponse,
+    DiagnosticEvaluationItem,
+    DiagnosticEvaluationResponse,
 )
 
 __all__ = [
@@ -26,4 +33,11 @@ __all__ = [
     "SessionResumeArtifact",
     "MockSessionRequest",
     "MockSessionResponse",
+    "ResourceChunk",
+    "DiagnosticQuestion",
+    "DiagnosticAnswer",
+    "DiagnosticSubmission",
+    "SessionInitResponse",
+    "DiagnosticEvaluationItem",
+    "DiagnosticEvaluationResponse",
 ]
