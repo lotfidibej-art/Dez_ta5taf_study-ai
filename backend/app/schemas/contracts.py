@@ -334,3 +334,24 @@ class DiagnosticEvaluationResponse(BaseModel):
     overall_initial_rating: float
     summary: str
 
+
+# ==============================================================================
+# 6. Slice 3 Foundation Tier Contracts
+# ==============================================================================
+
+class UnderstandingCheckRequest(BaseModel):
+    student_response: str = Field(..., description="Student's explanation or lab observation.")
+    concept_id: Optional[str] = Field(None, description="Optional target concept ID; defaults to active_concept_id.")
+
+
+class UnderstandingCheckResponse(BaseModel):
+    session: SessionState
+    action: AgentActionPayload
+    factual_accuracy: float = Field(..., ge=0.0, le=1.0)
+    causal_depth: float = Field(..., ge=0.0, le=1.0)
+    updated_mastery_rating: float = Field(..., ge=0.0, le=1.0)
+    feedback: str
+    identified_misconception: Optional[str] = None
+    advanced_tier: bool = Field(..., description="True if student advanced out of Foundation tier (<0.40).")
+
+

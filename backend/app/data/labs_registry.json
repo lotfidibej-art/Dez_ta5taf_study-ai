@@ -1,0 +1,146 @@
+[
+  {
+    "lab_id": "phet_projectile_motion",
+    "domain": "physics",
+    "platform": "PhET Interactive Simulations",
+    "title": "Projectile Motion",
+    "description": "Interactive kinematic lab simulating 2D trajectory, gravity, air resistance, launch angle, initial velocity, and vector components.",
+    "embed_url": "https://phet.colorado.edu/sims/html/projectile-motion/latest/projectile-motion_all.html",
+    "default_instruction": "Adjust initial velocity and angle to observe how horizontal and vertical velocity components evolve independently."
+  },
+  {
+    "lab_id": "phet_circuit_kit_dc",
+    "domain": "physics",
+    "platform": "PhET Interactive Simulations",
+    "title": "Circuit Construction Kit: DC",
+    "description": "Build electrical circuits with batteries, resistors, light bulbs, capacitors, switches, Ohm's law, and Kirchhoff's loop voltage rules.",
+    "embed_url": "https://phet.colorado.edu/sims/html/circuit-construction-kit-dc/latest/circuit-construction-kit-dc_all.html",
+    "default_instruction": "Connect a resistor and battery in series and use the voltmeter to verify Ohm's law (V = IR)."
+  },
+  {
+    "lab_id": "phet_wave_interference",
+    "domain": "physics",
+    "platform": "PhET Interactive Simulations",
+    "title": "Wave Interference",
+    "description": "Simulate water waves, sound waves, and light waves showing constructive and destructive interference, diffraction, wavelength, and frequency.",
+    "embed_url": "https://phet.colorado.edu/sims/html/wave-interference/latest/wave-interference_all.html",
+    "default_instruction": "Set two slit sources and observe the interference fringe patterns formed by wave superposition."
+  },
+  {
+    "lab_id": "phet_molecule_shapes",
+    "domain": "chemistry",
+    "platform": "PhET Interactive Simulations",
+    "title": "Molecule Shapes (VSEPR)",
+    "description": "Explore 3D molecular geometry, electron domains, lone pairs, bond angles, and VSEPR theory.",
+    "embed_url": "https://phet.colorado.edu/sims/html/molecule-shapes/latest/molecule-shapes_all.html",
+    "default_instruction": "Add single bonds and lone pairs to observe how electron repulsion dictates 3D geometric angles."
+  },
+  {
+    "lab_id": "phet_acid_base_solutions",
+    "domain": "chemistry",
+    "platform": "PhET Interactive Simulations",
+    "title": "Acid-Base Solutions",
+    "description": "Test equilibrium concentrations, pH scale, hydronium and hydroxide ion ratios for strong and weak acids and bases.",
+    "embed_url": "https://phet.colorado.edu/sims/html/acid-base-solutions/latest/acid-base-solutions_all.html",
+    "default_instruction": "Compare dissociation of strong vs weak acids to see how hydronium equilibrium impacts pH."
+  },
+  {
+    "lab_id": "phet_energy_skate_park",
+    "domain": "physics",
+    "platform": "PhET Interactive Simulations",
+    "title": "Energy Skate Park: Conservation of Energy",
+    "description": "Conservation of mechanical energy, conversion between kinetic and potential energy, friction, and thermal loss.",
+    "embed_url": "https://phet.colorado.edu/sims/html/energy-skate-park/latest/energy-skate-park_all.html",
+    "default_instruction": "Observe the bar chart of kinetic vs potential energy as the skater loops through frictionless tracks."
+  },
+  {
+    "lab_id": "desmos_derivatives_tangent",
+    "domain": "mathematics",
+    "platform": "Desmos Calculator",
+    "title": "Derivatives & Tangent Line Approximations",
+    "description": "Interactive calculus graph showing secant lines converging to tangent lines, instantaneous rate of change, limits, and derivative slopes.",
+    "embed_url": "https://www.desmos.com/calculator/dxggyam91k?embed",
+    "default_instruction": "Slide delta x toward zero to observe the secant line snap directly to the derivative tangent line."
+  },
+  {
+    "lab_id": "desmos_eigenvalues_linear_transform",
+    "domain": "mathematics",
+    "platform": "Desmos Calculator",
+    "title": "Eigenvalues & 2D Matrix Transformations",
+    "description": "Visualize 2x2 matrix transformations on unit eigenvectors, determinant area scaling, coordinate shearing, and null spaces.",
+    "embed_url": "https://www.desmos.com/calculator/e0g76vux8y?embed",
+    "default_instruction": "Adjust matrix components to see which vectors maintain their direction under transformation (eigenvectors)."
+  },
+  {
+    "lab_id": "desmos_fourier_series",
+    "domain": "mathematics",
+    "platform": "Desmos Calculator",
+    "title": "Fourier Series & Harmonic Synthesis",
+    "description": "Harmonic decomposition of square and sawtooth waves using trigonometric polynomial sums, Gibbs phenomenon, and frequency harmonics.",
+    "embed_url": "https://www.desmos.com/calculator/jcdm0u9nvs?embed",
+    "default_instruction": "Increase number of harmonics N to observe the Fourier series converge to the square wave."
+  },
+  {
+    "lab_id": "desmos_probability_distributions",
+    "domain": "mathematics",
+    "platform": "Desmos Calculator",
+    "title": "Probability Distributions & Central Limit Theorem",
+    "description": "Gaussian normal distribution, standard deviation, binomial distributions, probability density functions (PDF), and variance.",
+    "embed_url": "https://www.desmos.com/calculator/pnq6a10r62?embed",
+    "default_instruction": "Vary standard deviation sigma and mean mu to watch the probability density curve scale and shift."
+  },
+  {
+    "lab_id": "cs_python_recursion_visualizer",
+    "domain": "computer_science",
+    "platform": "Python Call Stack & Memory Visualizer",
+    "title": "Python Recursion & Stack Frame Visualizer",
+    "description": "Call stack frames, recursive branching, function call activation records, return values, call stack unwinding, and base conditions.",
+    "embed_url": "https://pythontutor.com/iframe-embed.html#code=def+recurse(n)%3A%0A++++if+n+%3C%3D+1%3A%0A++++++++return+1%0A++++return+n+*+recurse(n-1)%0A%0Aprint(recurse(3))&codeDivHeight=400&codeDivWidth=600&cumulative=false&curInstr=0&origin=opt-frontend.js&py=3&rawInputLstJSON=%5B%5D",
+    "default_instruction": "Step forward through execution to watch stack frames push during recursive calls and pop upon returning."
+  },
+  {
+    "lab_id": "cs_graph_traversal_bfs_dfs",
+    "domain": "computer_science",
+    "platform": "VisuAlgo Graph Traversal",
+    "title": "Graph Traversal (BFS & DFS) Interactive Sandbox",
+    "description": "Breadth-First Search (queue-based level order), Depth-First Search (stack/recursive), visited state, spanning trees, and graph connectivity.",
+    "embed_url": "https://visualgo.net/en/dfsbfs",
+    "default_instruction": "Run DFS vs BFS step-by-step from node 0 to contrast recursive backtracking with queue frontier exploration."
+  },
+  {
+    "lab_id": "cs_sql_joins_playground",
+    "domain": "computer_science",
+    "platform": "SQL Join Interactive Sandbox",
+    "title": "SQL Relational Joins & Set Operations",
+    "description": "Interactive relational algebra demonstrating INNER JOIN, LEFT OUTER JOIN, RIGHT JOIN, FULL OUTER JOIN, and Venn diagram set intersections.",
+    "embed_url": "https://sql-joins.lepnican.com/",
+    "default_instruction": "Switch join modes between INNER and FULL OUTER to see matching vs NULL-padded row projections."
+  },
+  {
+    "lab_id": "cs_sorting_algorithms_visualizer",
+    "domain": "computer_science",
+    "platform": "VisuAlgo Sorting",
+    "title": "Sorting Algorithms Visualizer (Merge, Quick, Heap)",
+    "description": "Comparative time and space complexity, divide-and-conquer recurrences, in-place partitioning, and element comparison animations.",
+    "embed_url": "https://visualgo.net/en/sorting",
+    "default_instruction": "Compare Quicksort recursion depth and partition pivots against Merge Sort merge steps."
+  },
+  {
+    "lab_id": "cs_binary_search_tree",
+    "domain": "computer_science",
+    "platform": "VisuAlgo BST",
+    "title": "Binary Search Trees & AVL Balancing",
+    "description": "Binary search tree invariants, left/right child ordering, logarithmic search complexity, node insertions, deletions, and tree rotations.",
+    "embed_url": "https://visualgo.net/en/bst",
+    "default_instruction": "Insert ordered elements to create a degenerate skewed tree, then compare search steps against a balanced tree."
+  },
+  {
+    "lab_id": "bio_cell_transport_membrane",
+    "domain": "biology",
+    "platform": "PhET Interactive Simulations",
+    "title": "Membrane Transport & Osmosis",
+    "description": "Diffusion across semipermeable lipid bilayers, facilitated transport channels, osmotic pressure, and concentration gradients.",
+    "embed_url": "https://phet.colorado.edu/sims/html/membrane-channels/latest/membrane-channels_all.html",
+    "default_instruction": "Open gated protein channels and watch solute concentrations equalize across the cell membrane."
+  }
+]

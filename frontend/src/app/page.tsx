@@ -20,6 +20,7 @@ import {
 import { SessionOnboardingModal } from "@/components/SessionOnboardingModal";
 import { BaselineDiagnosticCard } from "@/components/BaselineDiagnosticCard";
 import { ConceptProgressStrip } from "@/components/ConceptProgressStrip";
+import { FoundationBoard } from "@/components/FoundationBoard";
 
 export default function AdaptiveLearningPlatformPage() {
   // System Health State
@@ -193,110 +194,19 @@ export default function AdaptiveLearningPlatformPage() {
     }
   };
 
-  const renderFoundationBoard = (data: FoundationBoardPayload) => (
-    <div className="border border-sky-200 bg-sky-50/50 dark:bg-sky-950/20 dark:border-sky-800 rounded-2xl p-6 shadow-sm space-y-6">
-      <div className="flex items-center justify-between border-b border-sky-200 dark:border-sky-800 pb-3">
-        <div>
-          <span className="text-xs font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-400">
-            Mastery &lt; 0.40 • Foundation Board
-          </span>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Core Mental Model Breakdown
-          </h3>
-        </div>
-        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200">
-          Agent 4 &amp; 5: Explainer &amp; Labs
-        </span>
-      </div>
-
-      <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-          Essential Concepts:
-        </h4>
-        <ul className="space-y-2">
-          {data.bullet_breakdown.map((bullet, idx) => (
-            <li key={idx} className="flex items-start gap-2 text-sm text-gray-800 dark:text-gray-200">
-              <span className="text-sky-500 font-bold mt-0.5">•</span>
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {data.mermaid_diagram && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            Structural Execution Flow (Mermaid Diagram):
-          </h4>
-          <pre className="p-4 rounded-xl bg-gray-900 text-sky-300 font-mono text-xs overflow-x-auto border border-gray-800">
-            {data.mermaid_diagram}
-          </pre>
-        </div>
-      )}
-
-      {data.bridge_analogy && (
-        <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl space-y-2">
-          <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-semibold text-sm">
-            <span>🌉</span>
-            <span>Cross-Domain Bridge Analogy</span>
-          </div>
-          <div className="text-xs space-y-1 text-gray-700 dark:text-gray-300">
-            <p>
-              <strong className="text-amber-900 dark:text-amber-200">Source:</strong>{" "}
-              {data.bridge_analogy.source_concept || JSON.stringify(data.bridge_analogy)}
-            </p>
-            {data.bridge_analogy.target_concept && (
-              <p>
-                <strong className="text-amber-900 dark:text-amber-200">Target:</strong>{" "}
-                {data.bridge_analogy.target_concept}
-              </p>
-            )}
-            {data.bridge_analogy.mapping && (
-              <p className="italic text-gray-600 dark:text-gray-400 mt-1">
-                &ldquo;{data.bridge_analogy.mapping}&rdquo;
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-        {data.interactive_lab && (
-          <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-gray-900 dark:text-gray-100">
-                {data.interactive_lab.platform || "Interactive Sandbox"}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {data.interactive_lab.instruction}
-              </p>
-            </div>
-            {data.interactive_lab.lab_url && (
-              <a
-                href={data.interactive_lab.lab_url}
-                target="_blank"
-                rel="noreferrer"
-                className="ml-3 px-3 py-1.5 bg-sky-600 text-white rounded-lg text-xs font-medium hover:bg-sky-700 transition"
-              >
-                Launch Lab ↗
-              </a>
-            )}
-          </div>
-        )}
-
-        {data.study_habit_nudge && (
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl">
-            <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-              💡 Study Habit Nudge
-            </p>
-            <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
-              {data.study_habit_nudge}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const renderFoundationBoard = (data: FoundationBoardPayload) => {
+    if (!session) return null;
+    return (
+      <FoundationBoard
+        payload={data}
+        session={session}
+        onUnderstandingChecked={(resp) => {
+          setSession(resp.session);
+          setAction(resp.action);
+        }}
+      />
+    );
+  };
 
   const renderFadedWorkspace = (data: FadedWorkspacePayload) => (
     <div className="border border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800 rounded-2xl p-6 shadow-sm space-y-6">

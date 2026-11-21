@@ -23,6 +23,22 @@ export type SessionInitResponse = components["schemas"]["SessionInitResponse"];
 export type DiagnosticEvaluationItem = components["schemas"]["DiagnosticEvaluationItem"];
 export type DiagnosticEvaluationResponse = components["schemas"]["DiagnosticEvaluationResponse"];
 
+export interface UnderstandingCheckRequest {
+  student_response: string;
+  concept_id?: string | null;
+}
+
+export interface UnderstandingCheckResponse {
+  session: SessionState;
+  action: AgentActionPayload;
+  factual_accuracy: number;
+  causal_depth: number;
+  updated_mastery_rating: number;
+  feedback: string;
+  identified_misconception?: string | null;
+  advanced_tier: boolean;
+}
+
 export interface HealthComponents {
   postgres?: string;
   vector_extension?: string;
@@ -112,6 +128,27 @@ export async function getSessionSlice(sessionId: string): Promise<Record<string,
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch 1-hop context slice (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function checkUnderstanding(
+  sessionId: string,
+  payload: UnderstandingCheckRequest
+): Promise<UnderstandingCheckResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/sessions/${encodeURIComponent(sessionId)}/check-understanding`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new Error(`Understanding check failed (${res.status}): ${errorBody}`);
   }
   return res.json();
 }

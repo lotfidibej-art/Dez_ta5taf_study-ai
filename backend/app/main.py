@@ -24,9 +24,11 @@ from app.schemas.contracts import (
     MockSessionResponse,
     SessionInitResponse,
     SessionState,
+    UnderstandingCheckRequest,
+    UnderstandingCheckResponse,
 )
 from app.services.local_models import LocalMLService
-from app.db.migrations import run_migrations
+from app.db.migrations import get_db_connection, run_migrations
 from app.services.ingestion import ingest_and_embed_resources
 from app.agents.ingestion_agent import extract_concept_dag
 from app.agents.domain_profiler import hydrate_learner_profile
@@ -470,6 +472,140 @@ async def get_session_context_slice(session_id: str) -> Dict[str, Any]:
         )
     session = SessionState.model_validate_json(session_data)
     return get_one_hop_slice(session)
+
+
+# ==============================================================================
+# Slice 3: Foundation Understanding Check
+# ==============================================================================
+
+@app.post(
+    "/api/v1/sessions/{session_id}/check-understanding",
+    response_model=UnderstandingCheckResponse,
+)
+async def check_understanding(
+    session_id: str,
+    payload: UnderstandingCheckRequest,
+) -> UnderstandingCheckResponse:
+    """Evaluates student's 'explain it back in your own words' response on the Foundation Board.
+
+    1. Retrieves SessionState from Redis.
+    2. Evaluates student response via Agent 3 (Evaluator Agent).
+    3. Fuses factual accuracy & causal depth to calculate updated mastery rating.
+    4. Logs event to telemetry_events in PostgreSQL.
+    5. Re-runs LangGraph orchestrator state machine to transition UI tier or advance concept.
+    6. Persists updated session to Redis.
+    """
+    redis_key = f"session:{session_id}"
+    session_data = redis_client.get(redis_key)
+    if not session_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session with id '{session_id}' not found in cache.",
+        )
+
+    session = SessionState.model_validate_json(session_data)
+    target_concept_id = payload.concept_id or session.active_concept_id
+
+    # Find the concept title
+    concept_title = session.topic_title
+    for node in session.concept_graph:
+        if node.concept_id == target_concept_id:
+            concept_title = node.title
+            break
+
+    # Build synthetic question for Agent 3 evaluation
+    question = DiagnosticQuestion(
+        question_id=f"check_{target_concept_id}",
+        concept_id=target_concept_id,
+        concept_title=concept_title,
+        question_text=f"Explain in your own words how {concept_title} functions and what you observed.",
+        depth_tier="FOUNDATIONAL",
+    )
+    answer = DiagnosticAnswer(
+        question_id=question.question_id,
+        concept_id=target_concept_id,
+        answer_text=payload.student_response,
+    )
+
+    # Evaluate via Agent 3
+    eval_resp = evaluate_diagnostic_submission(
+        session=session,
+        questions=[question],
+        answers=[answer],
+    )
+
+    eval_item = eval_resp.evaluations[0] if eval_resp.evaluations else None
+    factual_acc = eval_item.factual_accuracy if eval_item else 0.5
+    causal_depth = eval_item.causal_depth if eval_item else 0.5
+    feedback = eval_item.feedback if eval_item else "Good effort. Reviewing next steps."
+    misconception = eval_item.identified_misconception if eval_item else None
+
+    # Calculate updated node mastery: 60% factual + 40% causal
+    fused_rating = round((0.6 * factual_acc) + (0.4 * causal_depth), 2)
+
+    # Update active node in session
+    for node in eval_resp.session.concept_graph:
+        if node.concept_id == target_concept_id:
+            node.mastery_rating = fused_rating
+            if fused_rating >= 0.75:
+                node.status = "MASTERED"
+            else:
+                node.status = "ACTIVE"
+            break
+
+    # Re-run LangGraph router to select next pedagogical tier action payload
+    updated_session, next_action = execute_turn(eval_resp.session)
+
+    # Check if student advanced out of Foundation tier (<0.40)
+    advanced_tier = fused_rating >= 0.40
+
+    # Log telemetry event to PostgreSQL
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO telemetry_events (session_id, student_id, event_type, payload)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (
+                        session_id,
+                        session.student_id,
+                        "FOUNDATION_UNDERSTANDING_CHECK",
+                        json.dumps({
+                            "concept_id": target_concept_id,
+                            "factual_accuracy": factual_acc,
+                            "causal_depth": causal_depth,
+                            "updated_mastery_rating": fused_rating,
+                            "advanced_tier": advanced_tier,
+                            "identified_misconception": misconception,
+                        }),
+                    ),
+                )
+        logger.info("Logged telemetry event for session %s, concept %s", session_id, target_concept_id)
+    except Exception as e:
+        logger.warning("Could not log telemetry event to DB: %s", e)
+
+    # Persist updated session in Redis
+    try:
+        redis_client.setex(
+            redis_key,
+            86400,
+            updated_session.model_dump_json(),
+        )
+    except Exception as e:
+        logger.error("Failed to update session in Redis: %s", e)
+
+    return UnderstandingCheckResponse(
+        session=updated_session,
+        action=next_action,
+        factual_accuracy=factual_acc,
+        causal_depth=causal_depth,
+        updated_mastery_rating=fused_rating,
+        feedback=feedback,
+        identified_misconception=misconception,
+        advanced_tier=advanced_tier,
+    )
 
 
 
