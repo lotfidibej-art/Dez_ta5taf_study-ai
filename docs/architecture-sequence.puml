@@ -1,0 +1,138 @@
+@startuml
+autonumber "<b>[00]</b>"
+
+title Adaptive AI Learning System - End-to-End Sequence Architecture
+
+skinparam dpi 150
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+
+skinparam roundcorner 6
+skinparam sequenceGroupBorderThickness 1.5
+skinparam sequenceGroupBackgroundColor #FAFAFA88
+skinparam sequenceGroupHeaderFontStyle bold
+
+' ========================================================
+' Lifeline Declarations (Color-Coded & Ordered)
+' ========================================================
+actor "Student" as Student
+participant "Frontend UI\n(Next.js + Voice)" as UI #E0F2FE
+participant "Orchestrator\n(LangGraph)" as Orch #DCFCE7
+participant "Agent 1:\nIngestion" as A1 #FEF3C7
+participant "Agent 2:\nDomain Profiler" as A2 #FEF3C7
+participant "Agent 3:\nEvaluator & Prosody" as A3 #FEF3C7
+participant "Agents 4 & 5:\nExplainer & Labs" as A45 #FEF3C7
+participant "Agent 6:\nScaffolding" as A6 #FEF3C7
+participant "Agent 7:\nAdversarial & Protégé" as A7 #FEF3C7
+participant "Agents 8 & 9:\nExam & Résumé" as A89 #FEF3C7
+database "Knowledge DB\n(Redis + pgvector)" as DB #F3E8FF
+
+' ========================================================
+' 1. Session Init & Parallel Hydration
+' ========================================================
+== 1. Session Init & Parallel Hydration ==
+
+Student -> UI : Choose mode (AI-Guided / Self-Guided),\nattach files (PDF/Video/URL), set scope
+activate UI
+
+UI -> Orch : startSession(sessionInitPayload)
+activate Orch
+
+par Parallel Ingestion & Profiling
+    Orch -> A1 : extractConceptsAndChunk(files)
+    activate A1
+    A1 -> DB : storeSemanticChunksAndGraph()
+    activate DB
+    deactivate DB
+    deactivate A1
+else Profile Hydration
+    Orch -> A2 : hydrateLearnerProfile(studentId, domain)
+    activate A2
+    A2 <-> DB : fetchDomainWeightsAndMasteredConcepts()
+    activate DB
+    deactivate DB
+    deactivate A2
+end
+
+' ========================================================
+' 2. Baseline Diagnostic
+' ========================================================
+== 2. Baseline Diagnostic ==
+
+Orch --> UI : renderBaselineDiagnostic(3_questions)
+deactivate Orch
+
+Student -> UI : Submit diagnostic answer (Text or Voice audio)
+
+UI -> A3 : evaluateResponse(textOrVoiceAudio, telemetry)
+activate A3
+
+A3 -> DB : updateRatingAndBanditWeights(rewardDelta)
+activate DB
+deactivate DB
+
+A3 --> Orch : emitComprehensionRating(rating)
+deactivate A3
+activate Orch
+
+' ========================================================
+' 3. Closed-Loop Adaptive Pedagogical Engine
+' ========================================================
+== 3. Closed-Loop Adaptive Pedagogical Engine ==
+
+loop until conceptMastery >= 0.85
+    alt rating < 0.40 - Foundation
+        Orch -> A45 : buildBulletsVisualsAnalogiesAndLab()
+        activate A45
+        A45 --> UI : renderFoundationBoard(mermaid, analogy, labUrl)
+        deactivate A45
+    else 0.40 <= rating <= 0.75 - Practice
+        Orch -> A6 : createFadedExampleOrHint(hintLevel)
+        activate A6
+        A6 --> UI : renderFadedWorkspace(steps, contingentHint)
+        deactivate A6
+    else rating > 0.75 - Deep Mastery
+        Orch -> A7 : launchMisconceptionTrapOrProtege()
+        activate A7
+        A7 --> UI : renderChallengeStage(flawedArtifactOrVoicePrompt)
+        deactivate A7
+    end
+
+    Student -> UI : Submit faded step, spot flaw, or teach AI via voice
+    
+    UI -> A3 : evaluateTurn(submission, prosodyMetrics)
+    activate A3
+    
+    A3 -> DB : persistTurnTelemetryAndWeights()
+    activate DB
+    deactivate DB
+    
+    A3 --> Orch : updatedComprehensionRating(newRating)
+    deactivate A3
+end
+
+' ========================================================
+' 4. Post-Session Mini-Exam, Résumé & Analytics
+' ========================================================
+== 4. Post-Session Mini-Exam, Résumé & Analytics ==
+
+Orch -> A89 : triggerMiniExamAndSynthesis(sessionLog)
+deactivate Orch
+activate A89
+
+A89 --> UI : presentAdaptiveMiniExam()
+
+Student -> UI : Complete Mini-Exam
+
+UI -> A89 : submitExamAnswers()
+
+A89 -> DB : saveSessionResumeAndAnalytics()
+activate DB
+deactivate DB
+
+A89 --> UI : displayRefresherCardAndAnalyticsPlots()
+deactivate A89
+deactivate UI
+
+@enduml
