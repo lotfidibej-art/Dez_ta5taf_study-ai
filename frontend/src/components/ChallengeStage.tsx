@@ -226,13 +226,19 @@ export const ChallengeStage: React.FC<ChallengeStageProps> = ({
             <textarea
               value={responseInput}
               onChange={(e) => setResponseInput(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
               placeholder={
                 isTrap
-                  ? "The hidden bug occurs because... In the edge case where..., the logic fails by..."
-                  : "The reason this happens is because... Think of it like..."
+                  ? "The hidden bug occurs because... In the edge case where..., the logic fails by... (Press Cmd/Ctrl + Enter to submit)"
+                  : "The reason this happens is because... Think of it like... (Press Cmd/Ctrl + Enter to submit)"
               }
               rows={4}
-              className={`w-full rounded-xl bg-neutral-950 border border-neutral-800 px-4 py-3 text-xs md:text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-4 py-3 text-xs md:text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 font-sans ${
                 isTrap ? "focus:ring-rose-500" : "focus:ring-purple-500"
               }`}
               disabled={isSubmitting}

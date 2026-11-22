@@ -10,10 +10,13 @@
     "generate:types": "openapi-typescript http://localhost:8000/openapi.json -o src/types/api.d.ts"
   },
   "dependencies": {
+    "framer-motion": "^14.14.0",
+    "lucide-react": "^1.77.0",
     "mermaid": "^10.9.8",
     "next": "16.4.6",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "recharts": "^3.11.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "4.3.3",

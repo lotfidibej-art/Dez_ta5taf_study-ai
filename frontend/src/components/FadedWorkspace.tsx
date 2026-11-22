@@ -277,9 +277,15 @@ export const FadedWorkspace: React.FC<FadedWorkspaceProps> = ({
           <textarea
             value={overallExplanation}
             onChange={(e) => setOverallExplanation(e.target.value)}
-            placeholder="Explain the causal mechanics connecting the worked steps to your completed faded blanks..."
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                handleSubmitSolution(e);
+              }
+            }}
+            placeholder="Explain the causal mechanics connecting the worked steps to your completed faded blanks... (Press Cmd/Ctrl + Enter to submit)"
             rows={2}
-            className="w-full rounded-xl bg-neutral-950 border border-neutral-800 px-4 py-2.5 text-xs md:text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className="w-full rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-4 py-2.5 text-xs md:text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500 font-sans"
           />
         </div>
 

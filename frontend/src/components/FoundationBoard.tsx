@@ -114,21 +114,21 @@ export const FoundationBoard: React.FC<FoundationBoardProps> = ({
 
       {/* Dismissible Metacognitive Study Nudge Banner */}
       {payload.study_habit_nudge && !isNudgeDismissed && (
-        <div className="relative flex items-start justify-between gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200">
+        <div className="relative flex items-start justify-between gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-200">
           <div className="flex items-start gap-3">
             <span className="text-lg">💡</span>
             <div>
-              <div className="font-semibold text-xs tracking-wider uppercase text-amber-400">
+              <div className="font-bold text-xs tracking-wider uppercase text-amber-800 dark:text-amber-400">
                 Study Coach Metacognitive Nudge
               </div>
-              <p className="text-sm text-neutral-200 mt-0.5 leading-relaxed">
+              <p className="text-sm text-slate-800 dark:text-zinc-200 mt-0.5 leading-relaxed font-sans">
                 {payload.study_habit_nudge}
               </p>
             </div>
           </div>
           <button
             onClick={() => setIsNudgeDismissed(true)}
-            className="text-neutral-400 hover:text-white text-xs px-2 py-1 rounded-md bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
+            className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs px-2 py-1 rounded-md bg-slate-200/60 dark:bg-zinc-800 transition-colors"
             title="Dismiss nudge"
           >
             ✕
@@ -282,16 +282,16 @@ export const FoundationBoard: React.FC<FoundationBoardProps> = ({
               Explain this concept back in your own words, or describe what you observed in the visual diagram/lab.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
             <button
               type="button"
               onClick={() => setUseVoiceMode(!useVoiceMode)}
-              className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium flex items-center gap-1"
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 transition-colors"
             >
               <span>{useVoiceMode ? "⌨️ Use Text Input" : "🎙️ Use Voice Reflection"}</span>
             </button>
-            <span className="text-xs text-neutral-500">
-              Target to advance: &ge; 40% mastery
+            <span className="text-xs text-slate-500 dark:text-zinc-400 whitespace-nowrap">
+              Target to advance: &ge; 40%
             </span>
           </div>
         </div>
@@ -314,9 +314,15 @@ export const FoundationBoard: React.FC<FoundationBoardProps> = ({
             <textarea
               value={reflectionText}
               onChange={(e) => setReflectionText(e.target.value)}
-              placeholder="In my own words, the mechanism works because..."
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  handleCheckUnderstanding(e);
+                }
+              }}
+              placeholder="In my own words, the mechanism works because... (Press Cmd/Ctrl + Enter to submit)"
               rows={3}
-              className="w-full rounded-xl bg-neutral-950 border border-neutral-800 px-4 py-3 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              className="w-full rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-4 py-3 text-sm text-slate-900 dark:text-zinc-100 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-sans leading-relaxed"
               disabled={isSubmitting}
             />
 

@@ -316,12 +316,30 @@ class MockSessionRequest(BaseModel):
         le=1.0,
         description="Seed comprehension rating (e.g. 0.25 for Foundation, 0.55 for Practice, 0.85 for Mastery).",
     )
+    mode: Literal["AI_GUIDED", "SELF_GUIDED"] = Field(
+        default="AI_GUIDED",
+        description="Learning mode: AI_GUIDED (system automated progression) or SELF_GUIDED (student freedom).",
+    )
 
 
 class MockSessionResponse(BaseModel):
     """Response containing initialized SessionState and selected AgentActionPayload."""
     session: SessionState
     action: AgentActionPayload
+
+
+class UpdateSessionModeRequest(BaseModel):
+    mode: Literal["AI_GUIDED", "SELF_GUIDED"] = Field(
+        description="Target mode: AI_GUIDED (automated prerequisite routing) or SELF_GUIDED (student picks any lesson/test)."
+    )
+
+
+class SelectConceptRequest(BaseModel):
+    concept_id: str = Field(description="The concept node to focus on.")
+    target_stage: Literal["FOUNDATION", "PRACTICE", "CHALLENGE", "PROTEGE", "EXAM"] = Field(
+        default="FOUNDATION",
+        description="The desired pedagogical activity type."
+    )
 
 
 # ==============================================================================
@@ -611,6 +629,12 @@ class ExamResult(BaseModel):
     graded_questions: List[ExamGradedItem]
     lingering_weak_concepts: List[str] = Field(default_factory=list)
     resume: Optional[SessionResumeArtifact] = None
+
+
+class SelectConceptResponse(BaseModel):
+    session: SessionState
+    action: Optional[AgentActionPayload] = None
+    exam: Optional[MiniExamPayload] = None
 
 
 class AnalyticsKPIs(BaseModel):

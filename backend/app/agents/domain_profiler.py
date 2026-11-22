@@ -157,7 +157,12 @@ def hydrate_learner_profile(
 
                     for p_domain, p_name, p_content, p_emb in prior_mastered_rows:
                         if p_emb is not None:
-                            prior_vec = np.array(p_emb)
+                            if hasattr(p_emb, "to_numpy"):
+                                prior_vec = p_emb.to_numpy()
+                            elif hasattr(p_emb, "to_list"):
+                                prior_vec = np.array(p_emb.to_list(), dtype=np.float32)
+                            else:
+                                prior_vec = np.array(p_emb, dtype=np.float32)
                             sims = np.dot(new_embeddings, prior_vec)
                             for idx, sim in enumerate(sims):
                                 if sim > 0.88:

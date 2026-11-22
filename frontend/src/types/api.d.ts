@@ -880,6 +880,12 @@ export interface components {
              * @default 0.25
              */
             initial_rating: number;
+            /**
+             * Mode
+             * @description Learning mode: AI_GUIDED or SELF_GUIDED
+             * @default AI_GUIDED
+             */
+            mode?: "AI_GUIDED" | "SELF_GUIDED";
         };
         /**
          * MockSessionResponse

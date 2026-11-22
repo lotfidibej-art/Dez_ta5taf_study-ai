@@ -290,6 +290,55 @@ export async function injectSelfGuidedSnippet(
   return res.json();
 }
 
+export interface SelectConceptResponse {
+  session: SessionState;
+  action?: AgentActionPayload | null;
+  exam?: MiniExamPayload | null;
+}
+
+export async function updateSessionMode(
+  sessionId: string,
+  mode: "AI_GUIDED" | "SELF_GUIDED"
+): Promise<SessionState> {
+  const res = await fetch(`${API_BASE}/api/v1/sessions/${encodeURIComponent(sessionId)}/mode`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new Error(`Failed to update session mode (${res.status}): ${errorBody}`);
+  }
+  return res.json();
+}
+
+export async function selectSessionConcept(
+  sessionId: string,
+  conceptId: string,
+  targetStage: "FOUNDATION" | "PRACTICE" | "CHALLENGE" | "PROTEGE" | "EXAM" = "FOUNDATION"
+): Promise<SelectConceptResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/sessions/${encodeURIComponent(sessionId)}/select-concept`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        concept_id: conceptId,
+        target_stage: targetStage,
+      }),
+    }
+  );
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new Error(`Failed to select concept (${res.status}): ${errorBody}`);
+  }
+  return res.json();
+}
+
 export async function startMiniExam(sessionId: string): Promise<MiniExamPayload> {
   const res = await fetch(`${API_BASE}/api/v1/sessions/${encodeURIComponent(sessionId)}/mini-exam/start`, {
     method: "POST",

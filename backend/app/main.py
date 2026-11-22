@@ -37,6 +37,9 @@ from app.schemas.contracts import (
     MiniExamPayload,
     ExamSubmitRequest,
     ExamResult,
+    UpdateSessionModeRequest,
+    SelectConceptRequest,
+    SelectConceptResponse,
 )
 from app.services.bandit import update_bandit_weights
 from app.services.local_models import LocalMLService
@@ -203,6 +206,7 @@ async def create_mock_session(payload: MockSessionRequest) -> MockSessionRespons
     """
     session_id = f"sess_{uuid.uuid4().hex[:12]}"
     active_concept_id = "concept_recursion_core"
+    is_self_guided = payload.mode == "SELF_GUIDED"
 
     concept_graph = [
         ConceptNodeState(
@@ -210,7 +214,7 @@ async def create_mock_session(payload: MockSessionRequest) -> MockSessionRespons
             title="Memory Architecture & Call Stacks",
             prerequisites=[],
             mastery_rating=min(1.0, payload.initial_rating + 0.1),
-            status="MASTERED" if payload.initial_rating >= 0.75 else "ACTIVE",
+            status="ACTIVE" if is_self_guided else ("MASTERED" if payload.initial_rating >= 0.75 else "ACTIVE"),
             attempts=1,
         ),
         ConceptNodeState(
@@ -226,7 +230,7 @@ async def create_mock_session(payload: MockSessionRequest) -> MockSessionRespons
             title="Tail Call Optimization & Complexity",
             prerequisites=[active_concept_id],
             mastery_rating=0.0,
-            status="LOCKED",
+            status="ACTIVE" if is_self_guided else "LOCKED",
             attempts=0,
         ),
     ]
@@ -234,7 +238,7 @@ async def create_mock_session(payload: MockSessionRequest) -> MockSessionRespons
     initial_session = SessionState(
         session_id=session_id,
         student_id=payload.student_id,
-        mode="AI_GUIDED",
+        mode=payload.mode,
         domain=payload.domain,
         resource_scope="STRICT_UPLOAD_ONLY",
         topic_title=payload.topic_title,
@@ -262,6 +266,11 @@ async def create_mock_session(payload: MockSessionRequest) -> MockSessionRespons
             redis_key,
             86400,
             updated_session.model_dump_json(),
+        )
+        redis_client.setex(
+            f"action:{session_id}",
+            86400,
+            action_payload.model_dump_json(),
         )
         logger.info("Persisted session %s to Redis with TTL=86400s", redis_key)
     except Exception as e:
@@ -969,6 +978,14 @@ async def get_session_resource_chunks(session_id: str) -> List[ResourceChunk]:
                 rows = cur.fetchall()
                 for r in rows:
                     c_id, sess_id, st_id, conc_id, content, s_name, s_loc, emb = r
+                    emb_list = None
+                    if emb is not None:
+                        if hasattr(emb, "to_list"):
+                            emb_list = emb.to_list()
+                        elif hasattr(emb, "tolist"):
+                            emb_list = emb.tolist()
+                        else:
+                            emb_list = list(emb)
                     chunks.append(
                         ResourceChunk(
                             chunk_id=str(c_id),
@@ -978,7 +995,7 @@ async def get_session_resource_chunks(session_id: str) -> List[ResourceChunk]:
                             content=content,
                             source_name=s_name,
                             source_location=s_loc,
-                            embedding=list(emb) if emb is not None else None,
+                            embedding=emb_list,
                         )
                     )
     except Exception as e:
@@ -1068,6 +1085,93 @@ async def self_guided_inject(
         concept_title=matched_concept_title,
         assigned_mastery_rating=assigned_rating,
         intent=payload.intent,
+    )
+
+
+@app.patch("/api/v1/sessions/{session_id}/mode", response_model=SessionState)
+async def update_session_mode(
+    session_id: str,
+    payload: UpdateSessionModeRequest,
+) -> SessionState:
+    """Toggles session learning mode between AI_GUIDED and SELF_GUIDED."""
+    redis_key = f"session:{session_id}"
+    session_data = redis_client.get(redis_key)
+    if not session_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session with id '{session_id}' not found.",
+        )
+    session = SessionState.model_validate_json(session_data)
+    session.mode = payload.mode
+    if payload.mode == "SELF_GUIDED":
+        for node in session.concept_graph:
+            if node.status == "LOCKED":
+                node.status = "ACTIVE"
+    redis_client.setex(redis_key, 86400, session.model_dump_json())
+    logger.info("Session %s switched mode to %s", session_id, payload.mode)
+    return session
+
+
+@app.post(
+    "/api/v1/sessions/{session_id}/select-concept",
+    response_model=SelectConceptResponse,
+)
+async def select_concept(
+    session_id: str,
+    payload: SelectConceptRequest,
+) -> SelectConceptResponse:
+    """Allows student in self-guided mode to pick any concept and pedagogical activity type."""
+    redis_key = f"session:{session_id}"
+    session_data = redis_client.get(redis_key)
+    if not session_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session with id '{session_id}' not found.",
+        )
+    session = SessionState.model_validate_json(session_data)
+
+    # 1. Update active concept
+    session.active_concept_id = payload.concept_id
+
+    # 2. Map target stage to calibrated mastery rating
+    stage_rating_map = {
+        "FOUNDATION": 0.25,
+        "PRACTICE": 0.55,
+        "CHALLENGE": 0.80,
+        "PROTEGE": 0.88,
+        "EXAM": 0.90,
+    }
+    target_rating = stage_rating_map.get(payload.target_stage, 0.35)
+    for node in session.concept_graph:
+        if node.concept_id == payload.concept_id:
+            node.mastery_rating = target_rating
+            node.status = "ACTIVE"
+            break
+
+    session.current_hint_level = 0
+    session.active_remediation = None
+    session.consecutive_mistakes = 0
+    session.last_technique_used = f"SELF_GUIDED_{payload.target_stage}"
+
+    # 3. If target is EXAM, generate mini-exam directly
+    if payload.target_stage == "EXAM":
+        exam = generate_mini_exam(session)
+        redis_client.setex(redis_key, 86400, session.model_dump_json())
+        return SelectConceptResponse(
+            session=session,
+            action=None,
+            exam=exam,
+        )
+
+    # 4. Re-run LangGraph router to produce corresponding stage payload
+    final_session, next_action = execute_turn(session)
+    redis_client.setex(redis_key, 86400, final_session.model_dump_json())
+    redis_client.setex(f"action:{session_id}", 86400, next_action.model_dump_json())
+
+    return SelectConceptResponse(
+        session=final_session,
+        action=next_action,
+        exam=None,
     )
 
 

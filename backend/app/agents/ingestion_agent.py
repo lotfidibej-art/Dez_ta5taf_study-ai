@@ -239,7 +239,12 @@ def extract_concept_dag(
 
                         for chunk_id, chunk_emb in chunk_rows:
                             if chunk_emb is not None:
-                                c_emb = np.array(list(chunk_emb), dtype=np.float32)
+                                if hasattr(chunk_emb, "to_numpy"):
+                                    c_emb = chunk_emb.to_numpy()
+                                elif hasattr(chunk_emb, "to_list"):
+                                    c_emb = np.array(chunk_emb.to_list(), dtype=np.float32)
+                                else:
+                                    c_emb = np.array(chunk_emb, dtype=np.float32)
                                 sims = np.dot(concept_embeddings, c_emb)
                                 best_idx = int(np.argmax(sims))
                                 best_concept_id = final_nodes[best_idx].concept_id
