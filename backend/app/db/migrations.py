@@ -52,6 +52,25 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_session
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_event_type 
     ON telemetry_events (event_type);
+
+ALTER TABLE concept_nodes ADD COLUMN IF NOT EXISTS next_review_at TIMESTAMPTZ;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS student_analytics_mv AS
+SELECT 
+    s.id AS student_id,
+    COALESCE(AVG(sdp.domain_mastery_score), 0.0) AS global_mastery_avg,
+    COUNT(DISTINCT sr.id) AS total_sessions_completed,
+    COALESCE(AVG((sr.analytics->>'mastery_velocity')::float), 0.0) AS avg_mastery_velocity,
+    COALESCE(AVG((sr.analytics->>'exam_score')::float), 0.0) AS avg_exam_score,
+    COALESCE(AVG((sr.analytics->>'final_mastery')::float), 0.0) AS avg_final_mastery,
+    MAX(sr.created_at) AS last_session_at
+FROM students s
+LEFT JOIN student_domain_profiles sdp ON s.id = sdp.student_id
+LEFT JOIN session_resumes sr ON s.id = sr.student_id
+GROUP BY s.id;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_student_analytics_mv_id ON student_analytics_mv(student_id);
+
 """
 
 

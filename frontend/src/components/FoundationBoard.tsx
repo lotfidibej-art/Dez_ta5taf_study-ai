@@ -6,8 +6,11 @@ import {
   SessionState,
   UnderstandingCheckResponse,
   checkUnderstanding,
+  checkUnderstandingVoice,
 } from "@/lib/api";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { RemediationPanel } from "@/components/RemediationPanel";
 
 interface FoundationBoardProps {
   payload: FoundationBoardPayload;
@@ -23,12 +26,35 @@ export const FoundationBoard: React.FC<FoundationBoardProps> = ({
   const [activeTab, setActiveTab] = useState<"diagram" | "lab">("diagram");
   const [isNudgeDismissed, setIsNudgeDismissed] = useState<boolean>(false);
   const [reflectionText, setReflectionText] = useState<string>("");
+  const [useVoiceMode, setUseVoiceMode] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submissionFeedback, setSubmissionFeedback] = useState<UnderstandingCheckResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const activeNode = (session.concept_graph ?? []).find((n) => n.concept_id === payload.concept_id);
   const conceptTitle = activeNode ? activeNode.title : session.topic_title;
+  const activeRemediation = submissionFeedback?.remediation || session.active_remediation;
+
+  const handleVoiceCheck = async (audioBlob: Blob) => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const resp = await checkUnderstandingVoice(
+        session.session_id,
+        audioBlob,
+        payload.concept_id
+      );
+      setSubmissionFeedback(resp);
+      if (onUnderstandingChecked) {
+        onUnderstandingChecked(resp);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleCheckUnderstanding = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -256,47 +282,71 @@ export const FoundationBoard: React.FC<FoundationBoardProps> = ({
               Explain this concept back in your own words, or describe what you observed in the visual diagram/lab.
             </p>
           </div>
-          <span className="text-xs text-neutral-500">
-            Target to advance: &ge; 40% mastery
-          </span>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setUseVoiceMode(!useVoiceMode)}
+              className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium flex items-center gap-1"
+            >
+              <span>{useVoiceMode ? "⌨️ Use Text Input" : "🎙️ Use Voice Reflection"}</span>
+            </button>
+            <span className="text-xs text-neutral-500">
+              Target to advance: &ge; 40% mastery
+            </span>
+          </div>
         </div>
 
-        <form onSubmit={handleCheckUnderstanding} className="flex flex-col gap-3">
-          <textarea
-            value={reflectionText}
-            onChange={(e) => setReflectionText(e.target.value)}
-            placeholder="In my own words, the mechanism works because..."
-            rows={3}
-            className="w-full rounded-xl bg-neutral-950 border border-neutral-800 px-4 py-3 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-            disabled={isSubmitting}
+        {/* Targeted Mistake Remediation Panel (Slice 6) */}
+        {activeRemediation && (
+          <RemediationPanel remediation={activeRemediation} />
+        )}
+
+        {useVoiceMode ? (
+          <VoiceRecorder
+            label="Explain Foundation Concept Out Loud"
+            submitButtonText="Submit Spoken Reflection & Advance"
+            onSubmitVoice={handleVoiceCheck}
+            isSubmitting={isSubmitting}
+            prosodySignals={submissionFeedback?.prosody_signals ?? null}
           />
+        ) : (
+          <form onSubmit={handleCheckUnderstanding} className="flex flex-col gap-3">
+            <textarea
+              value={reflectionText}
+              onChange={(e) => setReflectionText(e.target.value)}
+              placeholder="In my own words, the mechanism works because..."
+              rows={3}
+              className="w-full rounded-xl bg-neutral-950 border border-neutral-800 px-4 py-3 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              disabled={isSubmitting}
+            />
 
-          <div className="flex items-center justify-between">
-            {errorMessage ? (
-              <span className="text-xs text-rose-400 font-medium">⚠️ {errorMessage}</span>
-            ) : (
-              <span className="text-xs text-neutral-500">
-                Evaluated by Agent 3 on factual correctness and causal depth.
-              </span>
-            )}
-
-            <button
-              type="submit"
-              disabled={isSubmitting || !reflectionText.trim()}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <span className="animate-spin text-sm">⏳</span> Evaluating...
-                </>
+            <div className="flex items-center justify-between">
+              {errorMessage ? (
+                <span className="text-xs text-rose-400 font-medium">⚠️ {errorMessage}</span>
               ) : (
-                <>
-                  <span>Submit & Advance</span> ➔
-                </>
+                <span className="text-xs text-neutral-500">
+                  Evaluated by Agent 3 on factual correctness and causal depth.
+                </span>
               )}
-            </button>
-          </div>
-        </form>
+
+              <button
+                type="submit"
+                disabled={isSubmitting || !reflectionText.trim()}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="animate-spin text-sm">⏳</span> Evaluating...
+                  </>
+                ) : (
+                  <>
+                    <span>Submit & Advance</span> ➔
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
 
         {/* Feedback Display */}
         {submissionFeedback && (
@@ -323,6 +373,22 @@ export const FoundationBoard: React.FC<FoundationBoardProps> = ({
             {submissionFeedback.identified_misconception && (
               <div className="text-[11px] text-amber-300 font-mono bg-amber-500/10 px-2 py-1 rounded">
                 Note detected misconception: {submissionFeedback.identified_misconception}
+              </div>
+            )}
+            {submissionFeedback.prosody_signals && (
+              <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex flex-wrap items-center gap-2.5 text-xs mt-1">
+                <span className="font-semibold text-indigo-300">🎙️ Spoken Prosody:</span>
+                <span className="text-neutral-300 font-mono">
+                  {Math.round(submissionFeedback.prosody_signals.speech_rate_wpm)} WPM
+                </span>
+                <span className="text-neutral-400">•</span>
+                <span className="text-indigo-300 font-mono">
+                  {submissionFeedback.prosody_signals.hesitation_pause_count} pauses (&gt;1.5s)
+                </span>
+                <span className="text-neutral-400">•</span>
+                <span className="text-emerald-300 font-medium">
+                  {submissionFeedback.prosody_signals.fluency_signal}
+                </span>
               </div>
             )}
           </div>

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import redis
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -16,24 +16,40 @@ from app.orchestrator.graph import execute_turn
 from app.orchestrator.graph_utils import get_one_hop_slice
 from app.schemas.contracts import (
     ConceptNodeState,
+    ContingentHint,
     DiagnosticAnswer,
     DiagnosticEvaluationResponse,
     DiagnosticQuestion,
     DiagnosticSubmission,
+    HintResponse,
     MockSessionRequest,
     MockSessionResponse,
+    ResourceChunk,
+    SelfGuidedInjectRequest,
+    SelfGuidedInjectResponse,
     SessionInitResponse,
     SessionState,
+    SubmitTurnRequest,
+    SubmitTurnResponse,
     UnderstandingCheckRequest,
     UnderstandingCheckResponse,
+    VoiceProsodySignals,
+    MiniExamPayload,
+    ExamSubmitRequest,
+    ExamResult,
 )
+from app.services.bandit import update_bandit_weights
 from app.services.local_models import LocalMLService
 from app.db.migrations import get_db_connection, run_migrations
 from app.services.ingestion import ingest_and_embed_resources
 from app.agents.ingestion_agent import extract_concept_dag
 from app.agents.domain_profiler import hydrate_learner_profile
 from app.agents.diagnostic_agent import generate_baseline_diagnostic
-from app.agents.evaluator_agent import evaluate_diagnostic_submission
+from app.agents.evaluator_agent import evaluate_diagnostic_submission, evaluate_turn_submission
+from app.agents.scaffolding_agent import generate_contingent_hint
+from app.agents.exam_agent import generate_mini_exam, grade_mini_exam
+from app.agents.resume_agent import synthesize_session_resume
+from app.api.analytics import router as analytics_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,6 +101,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register Slice 7 Analytics API router
+app.include_router(analytics_router)
 
 
 @app.get("/")
@@ -453,6 +472,11 @@ async def submit_diagnostic_answers(
             86400,
             eval_response.session.model_dump_json(),
         )
+        redis_client.setex(
+            f"action:{session_id}",
+            86400,
+            eval_response.action.model_dump_json(),
+        )
         logger.info("Session %s updated in Redis after diagnostic evaluation.", session_id)
     except Exception as e:
         logger.error("Redis persistence failure on diagnostic update: %s", e)
@@ -484,16 +508,17 @@ async def get_session_context_slice(session_id: str) -> Dict[str, Any]:
 )
 async def check_understanding(
     session_id: str,
-    payload: UnderstandingCheckRequest,
+    request: Request,
 ) -> UnderstandingCheckResponse:
     """Evaluates student's 'explain it back in your own words' response on the Foundation Board.
 
+    Supports both application/json and multipart/form-data with optional audio_file.
     1. Retrieves SessionState from Redis.
-    2. Evaluates student response via Agent 3 (Evaluator Agent).
-    3. Fuses factual accuracy & causal depth to calculate updated mastery rating.
-    4. Logs event to telemetry_events in PostgreSQL.
-    5. Re-runs LangGraph orchestrator state machine to transition UI tier or advance concept.
-    6. Persists updated session to Redis.
+    2. Analyzes voice prosody if audio_file is provided.
+    3. Evaluates student response via Agent 3.
+    4. Enforces surface memorization guard & hesitation support.
+    5. Updates multi-armed bandit weights and logs telemetry.
+    6. Re-runs LangGraph state machine and persists to Redis.
     """
     redis_key = f"session:{session_id}"
     session_data = redis_client.get(redis_key)
@@ -504,13 +529,50 @@ async def check_understanding(
         )
 
     session = SessionState.model_validate_json(session_data)
-    target_concept_id = payload.concept_id or session.active_concept_id
+
+    content_type = request.headers.get("content-type", "")
+    student_response = ""
+    target_concept_id = None
+    prosody_signals = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        student_response = str(form.get("student_response") or "").strip()
+        target_concept_id = form.get("concept_id")
+        audio_file = form.get("audio_file")
+
+        if audio_file and hasattr(audio_file, "filename") and audio_file.filename:
+            ext = os.path.splitext(audio_file.filename)[1] or ".webm"
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                temp_path = tmp.name
+                try:
+                    shutil.copyfileobj(audio_file.file, tmp)
+                    tmp.flush()
+                    local_service = LocalMLService.get_instance()
+                    prosody_signals = local_service.analyze_voice(temp_path, language="en")
+                    if not student_response and prosody_signals.get("transcript"):
+                        student_response = prosody_signals["transcript"]
+                finally:
+                    if os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except Exception:
+                            pass
+    else:
+        body = await request.json()
+        payload = UnderstandingCheckRequest.model_validate(body)
+        student_response = payload.student_response
+        target_concept_id = payload.concept_id
+
+    target_concept_id = target_concept_id or session.active_concept_id
 
     # Find the concept title
     concept_title = session.topic_title
+    prev_node_rating = 0.0
     for node in session.concept_graph:
         if node.concept_id == target_concept_id:
             concept_title = node.title
+            prev_node_rating = node.mastery_rating
             break
 
     # Build synthetic question for Agent 3 evaluation
@@ -524,7 +586,7 @@ async def check_understanding(
     answer = DiagnosticAnswer(
         question_id=question.question_id,
         concept_id=target_concept_id,
-        answer_text=payload.student_response,
+        answer_text=student_response,
     )
 
     # Evaluate via Agent 3
@@ -540,29 +602,125 @@ async def check_understanding(
     feedback = eval_item.feedback if eval_item else "Good effort. Reviewing next steps."
     misconception = eval_item.identified_misconception if eval_item else None
 
+    # Step 2 Prosody Anti-Memorization & Hesitation Rules
+    if prosody_signals:
+        if prosody_signals.get("hesitation_pause_count", 0) >= 2 or prosody_signals.get("filler_word_ratio", 0.0) > 0.12:
+            if prosody_signals.get("self_correction_count", 0) > 0:
+                causal_depth = min(1.0, round(causal_depth + 0.10, 2))
+                feedback += " Good verbal self-correction noted as you explained the mechanics."
+            else:
+                feedback += " Take your time to articulate the causal mechanism before concluding."
+
     # Calculate updated node mastery: 60% factual + 40% causal
     fused_rating = round((0.6 * factual_acc) + (0.4 * causal_depth), 2)
 
+    # Slice 6: Mistake Detection & Remediation in Foundation Check
+    is_monotone = bool(prosody_signals and prosody_signals.get("monotone_recitation_flag", False))
+    is_mistake = (factual_acc < 0.70) or (causal_depth < 0.65) or is_monotone
+
+    # Surface memorization guard
+    if is_monotone and factual_acc >= 0.80:
+        fused_rating = min(fused_rating, 0.78)
+        misconception = "Surface memorization detected: high-speed verbatim recall without causal elaboration"
+        feedback = (
+            "Surface memorization detected: your explanation was rapid and verbatim, but lacked causal synthesis. "
+            "To achieve durable mastery, explain the underlying *why* and mechanisms in your own words."
+        )
+
+    remediation = None
+    if is_mistake:
+        # Cap rating to foundation tier (< 0.40) to prevent premature progression
+        fused_rating = min(fused_rating, 0.38)
+        advanced_tier = False
+
+        from app.agents.remediation_agent import build_mistake_remediation
+        cached_action = None
+        action_data = redis_client.get(f"action:{session_id}")
+        if action_data:
+            try:
+                cached_action = json.loads(action_data)
+            except Exception:
+                pass
+
+        remediation = build_mistake_remediation(
+            session_state=session,
+            student_submission=student_response,
+            identified_misconception=misconception,
+            evaluation_feedback=feedback,
+            active_action=cached_action,
+        )
+        consecutive_mistakes = remediation.consecutive_mistakes
+    else:
+        advanced_tier = fused_rating >= 0.40
+        consecutive_mistakes = 0
+
     # Update active node in session
-    for node in eval_resp.session.concept_graph:
+    for node in session.concept_graph:
         if node.concept_id == target_concept_id:
             node.mastery_rating = fused_rating
             if fused_rating >= 0.75:
                 node.status = "MASTERED"
-            else:
+            elif fused_rating >= 0.40:
                 node.status = "ACTIVE"
             break
 
-    # Re-run LangGraph router to select next pedagogical tier action payload
-    updated_session, next_action = execute_turn(eval_resp.session)
+    # Determine active_concept for next turn:
+    active_id = target_concept_id
+    if fused_rating >= 0.75 and not is_mistake:
+        from app.orchestrator.graph_utils import get_next_unlocked_concept
+        unlocked = get_next_unlocked_concept(session.concept_graph)
+        if unlocked and unlocked != target_concept_id:
+            active_id = unlocked
 
-    # Check if student advanced out of Foundation tier (<0.40)
-    advanced_tier = fused_rating >= 0.40
+    # Multi-Armed Bandit update
+    updated_weights = update_bandit_weights(
+        student_id=session.student_id,
+        domain=session.domain,
+        last_technique_used="FOUNDATION_BOARD",
+        previous_rating=prev_node_rating,
+        updated_rating=fused_rating,
+        current_weights=session.domain_strategy_weights,
+    )
+
+    current_session = session.model_copy(
+        update={
+            "concept_graph": session.concept_graph,
+            "active_concept_id": active_id,
+            "domain_strategy_weights": updated_weights,
+            "last_technique_used": "FOUNDATION_BOARD",
+            "consecutive_mistakes": consecutive_mistakes,
+            "active_remediation": remediation,
+        }
+    )
+
+    # Core Behavioral Rule: If mistake occurred, preserve the foundation board!
+    if is_mistake and cached_action:
+        from app.schemas.contracts import FoundationBoardPayload
+        next_action = FoundationBoardPayload.model_validate(cached_action) if isinstance(cached_action, dict) and cached_action.get("ui_component") == "FOUNDATION_BOARD" else execute_turn(current_session)[1]
+        updated_session = current_session
+    else:
+        updated_session, next_action = execute_turn(current_session)
+
+    action_dict = next_action.model_dump() if hasattr(next_action, "model_dump") else cached_action
+    updated_session = updated_session.model_copy(update={"last_action_payload": action_dict})
 
     # Log telemetry event to PostgreSQL
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
+                db_student_uuid = None
+                try:
+                    uuid.UUID(str(session.student_id))
+                    db_student_uuid = str(session.student_id)
+                except Exception:
+                    cur.execute(
+                        "SELECT id FROM students WHERE email = %s OR name = %s LIMIT 1",
+                        (f"{session.student_id}@student.local", session.student_id),
+                    )
+                    s_row = cur.fetchone()
+                    if s_row:
+                        db_student_uuid = s_row[0]
+
                 cur.execute(
                     """
                     INSERT INTO telemetry_events (session_id, student_id, event_type, payload)
@@ -570,7 +728,7 @@ async def check_understanding(
                     """,
                     (
                         session_id,
-                        session.student_id,
+                        db_student_uuid,
                         "FOUNDATION_UNDERSTANDING_CHECK",
                         json.dumps({
                             "concept_id": target_concept_id,
@@ -579,6 +737,7 @@ async def check_understanding(
                             "updated_mastery_rating": fused_rating,
                             "advanced_tier": advanced_tier,
                             "identified_misconception": misconception,
+                            "prosody_signals": prosody_signals,
                         }),
                     ),
                 )
@@ -593,6 +752,11 @@ async def check_understanding(
             86400,
             updated_session.model_dump_json(),
         )
+        redis_client.setex(
+            f"action:{session_id}",
+            86400,
+            next_action.model_dump_json(),
+        )
     except Exception as e:
         logger.error("Failed to update session in Redis: %s", e)
 
@@ -605,6 +769,305 @@ async def check_understanding(
         feedback=feedback,
         identified_misconception=misconception,
         advanced_tier=advanced_tier,
+        prosody_signals=VoiceProsodySignals(**prosody_signals) if prosody_signals else None,
+        remediation=remediation,
+    )
+
+
+# ==============================================================================
+# Slice 4: Scaffolding Hints, Turn Submissions, and Self-Guided Exploration
+# ==============================================================================
+
+@app.post(
+    "/api/v1/sessions/{session_id}/hint",
+    response_model=HintResponse,
+)
+async def request_contingent_hint(session_id: str) -> HintResponse:
+    """Delivers progressive scaffolding via the Contingent Hint Ladder (Levels 1 to 3).
+
+    Level 1: Socratic conceptual nudge.
+    Level 2: Strict source pointer quoting exact file & page/timestamp from resource_chunks.
+    Level 3: Formula / code structural skeleton with blanks.
+    """
+    redis_key = f"session:{session_id}"
+    session_data = redis_client.get(redis_key)
+    if not session_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session with id '{session_id}' not found.",
+        )
+
+    session = SessionState.model_validate_json(session_data)
+
+    # Retrieve current workspace payload if cached
+    from app.schemas.contracts import FadedWorkspacePayload
+    action_data = redis_client.get(f"action:{session_id}")
+    workspace = None
+    if action_data:
+        try:
+            act_dict = json.loads(action_data)
+            if act_dict.get("ui_component") == "FADED_EXAMPLE_WORKSPACE":
+                workspace = FadedWorkspacePayload.model_validate(act_dict)
+        except Exception:
+            pass
+
+    if not workspace:
+        from app.agents.scaffolding_agent import _fallback_faded_workspace
+        workspace = _fallback_faded_workspace(session, session.topic_title)
+
+    # Generate next progressive hint level
+    hint = generate_contingent_hint(session, workspace)
+
+    # Increment hint level and persist
+    new_hint_level = hint.level
+    updated_session = session.model_copy(update={"current_hint_level": new_hint_level})
+
+    # Attach hint to workspace and re-cache
+    workspace.active_hint = hint.model_dump()
+    redis_client.setex(redis_key, 86400, updated_session.model_dump_json())
+    redis_client.setex(f"action:{session_id}", 86400, workspace.model_dump_json())
+
+    return HintResponse(
+        session=updated_session,
+        active_hint=hint,
+        hint_level=new_hint_level,
+    )
+
+
+@app.post(
+    "/api/v1/sessions/{session_id}/submit-turn",
+    response_model=SubmitTurnResponse,
+)
+async def submit_turn(
+    session_id: str,
+    request: Request,
+) -> SubmitTurnResponse:
+    """Unified turn evaluator for Faded Steps, Misconception Traps, and Protégé Challenges.
+
+    Supports both application/json and multipart/form-data with optional audio_file.
+    1. Retrieves SessionState and active action from Redis.
+    2. Runs LocalMLService.analyze_voice() if an audio_file is attached.
+    3. Grades response with Agent 3 (evaluator_agent), incorporating spoken prosody signals.
+    4. Updates Multi-Armed Bandit weights in PostgreSQL and syncs to Redis.
+    5. Advances concept or routes to next pedagogical tier via LangGraph.
+    """
+    redis_key = f"session:{session_id}"
+    session_data = redis_client.get(redis_key)
+    if not session_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session with id '{session_id}' not found.",
+        )
+
+    session = SessionState.model_validate_json(session_data)
+
+    content_type = request.headers.get("content-type", "")
+    text_input = ""
+    step_answers: Optional[Dict[str, str]] = None
+    response_latency_sec = 0.0
+    prosody_signals = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        text_input = str(form.get("text_input") or "").strip()
+        step_answers_raw = form.get("step_answers")
+        if step_answers_raw:
+            try:
+                if isinstance(step_answers_raw, str):
+                    step_answers = json.loads(step_answers_raw)
+                elif isinstance(step_answers_raw, dict):
+                    step_answers = step_answers_raw
+            except Exception:
+                step_answers = None
+
+        try:
+            response_latency_sec = float(form.get("response_latency_sec") or 0.0)
+        except Exception:
+            response_latency_sec = 0.0
+
+        audio_file = form.get("audio_file")
+        if audio_file and hasattr(audio_file, "filename") and audio_file.filename:
+            ext = os.path.splitext(audio_file.filename)[1] or ".webm"
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                temp_path = tmp.name
+                try:
+                    shutil.copyfileobj(audio_file.file, tmp)
+                    tmp.flush()
+                    local_service = LocalMLService.get_instance()
+                    prosody_signals = local_service.analyze_voice(temp_path, language="en")
+                    if not text_input and prosody_signals.get("transcript"):
+                        text_input = prosody_signals["transcript"]
+                finally:
+                    if os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except Exception:
+                            pass
+    else:
+        body = await request.json()
+        payload = SubmitTurnRequest.model_validate(body)
+        text_input = payload.text_input
+        step_answers = payload.step_answers
+        response_latency_sec = payload.response_latency_sec
+
+    # Retrieve cached action payload
+    action_data = redis_client.get(f"action:{session_id}")
+    active_action = None
+    if action_data:
+        try:
+            ad = json.loads(action_data)
+            ui_c = ad.get("ui_component")
+            if ui_c == "FADED_EXAMPLE_WORKSPACE":
+                from app.schemas.contracts import FadedWorkspacePayload
+                active_action = FadedWorkspacePayload.model_validate(ad)
+            elif ui_c == "MISCONCEPTION_TRAP":
+                from app.schemas.contracts import MisconceptionTrapPayload
+                active_action = MisconceptionTrapPayload.model_validate(ad)
+            elif ui_c == "PROTEGE_VOICE_STAGE":
+                from app.schemas.contracts import ProtegeStagePayload
+                active_action = ProtegeStagePayload.model_validate(ad)
+        except Exception as e:
+            logger.warning("Could not deserialize active action: %s", e)
+
+    # Evaluate turn via Agent 3
+    result: SubmitTurnResponse = evaluate_turn_submission(
+        session=session,
+        text_input=text_input,
+        step_answers=step_answers,
+        response_latency_sec=response_latency_sec,
+        active_action=active_action,
+        prosody_signals=prosody_signals,
+    )
+
+    # Update Redis cache
+    redis_client.setex(redis_key, 86400, result.session.model_dump_json())
+    redis_client.setex(f"action:{session_id}", 86400, result.action.model_dump_json())
+
+    return result
+
+
+@app.get(
+    "/api/v1/sessions/{session_id}/chunks",
+    response_model=List[ResourceChunk],
+)
+async def get_session_resource_chunks(session_id: str) -> List[ResourceChunk]:
+    """Retrieves all ingested multimodal resource chunks with source citations for Self-Guided reading."""
+    chunks: List[ResourceChunk] = []
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT chunk_id, session_id, student_id, concept_id, content, 
+                           source_name, source_location, embedding
+                    FROM resource_chunks 
+                    WHERE session_id = %s
+                    ORDER BY source_name ASC, chunk_id ASC
+                    """,
+                    (session_id,),
+                )
+                rows = cur.fetchall()
+                for r in rows:
+                    c_id, sess_id, st_id, conc_id, content, s_name, s_loc, emb = r
+                    chunks.append(
+                        ResourceChunk(
+                            chunk_id=str(c_id),
+                            session_id=str(sess_id),
+                            student_id=str(st_id),
+                            concept_id=conc_id,
+                            content=content,
+                            source_name=s_name,
+                            source_location=s_loc,
+                            embedding=list(emb) if emb is not None else None,
+                        )
+                    )
+    except Exception as e:
+        logger.error("Failed to query resource_chunks for session %s: %s", session_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database retrieval error: {e}",
+        )
+    return chunks
+
+
+@app.post(
+    "/api/v1/sessions/{session_id}/self-guided/inject",
+    response_model=SelfGuidedInjectResponse,
+)
+async def self_guided_inject(
+    session_id: str,
+    payload: SelfGuidedInjectRequest,
+) -> SelfGuidedInjectResponse:
+    """Maps highlighted text in Self-Guided mode to its closest concept node via pgvector,
+
+    sets the calibrated initial rating (0.30 for EXPLAIN -> Foundation; 0.55 for QUIZ -> Scaffolding),
+    and routes directly into the LangGraph state machine.
+    """
+    redis_key = f"session:{session_id}"
+    session_data = redis_client.get(redis_key)
+    if not session_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session with id '{session_id}' not found.",
+        )
+
+    session = SessionState.model_validate_json(session_data)
+
+    # 1. Embed selected text snippet
+    ml_service = LocalMLService.get_instance()
+    snippet_emb = ml_service.embed_text([payload.selected_text])
+    vec = snippet_emb[0] if snippet_emb else [0.0] * 384
+
+    # 2. Match to closest concept node in PostgreSQL pgvector or in session concept_graph
+    matched_concept_id = session.active_concept_id
+    matched_concept_title = session.topic_title
+
+    try:
+        import numpy as np
+        # Compute similarities against session concept nodes
+        concept_texts = [f"{n.title}. {n.summary_hook or ''}" for n in session.concept_graph]
+        if concept_texts:
+            concept_embs = np.array(ml_service.embed_text(concept_texts), dtype=np.float32)
+            query_vec = np.array(vec, dtype=np.float32)
+            sims = np.dot(concept_embs, query_vec)
+            best_idx = int(np.argmax(sims))
+            matched_concept_id = session.concept_graph[best_idx].concept_id
+            matched_concept_title = session.concept_graph[best_idx].title
+    except Exception as e:
+        logger.warning("Could not match concept vector: %s", e)
+
+    # 3. Calibrate mastery based on user intent
+    assigned_rating = 0.30 if payload.intent == "EXPLAIN" else 0.55
+
+    for node in session.concept_graph:
+        if node.concept_id == matched_concept_id:
+            node.mastery_rating = assigned_rating
+            node.status = "ACTIVE"
+            break
+
+    updated_session_state = session.model_copy(
+        update={
+            "concept_graph": session.concept_graph,
+            "active_concept_id": matched_concept_id,
+            "current_hint_level": 0,
+            "last_technique_used": f"SELF_GUIDED_{payload.intent}",
+        }
+    )
+
+    # 4. Re-run LangGraph router
+    final_session, next_action = execute_turn(updated_session_state)
+
+    # Persist updated session and action in Redis
+    redis_client.setex(redis_key, 86400, final_session.model_dump_json())
+    redis_client.setex(f"action:{session_id}", 86400, next_action.model_dump_json())
+
+    return SelfGuidedInjectResponse(
+        session=final_session,
+        action=next_action,
+        concept_id=matched_concept_id,
+        concept_title=matched_concept_title,
+        assigned_mastery_rating=assigned_rating,
+        intent=payload.intent,
     )
 
 
@@ -651,3 +1114,87 @@ async def analyze_voice(
                 os.remove(temp_path)
             except OSError:
                 pass
+
+
+# ==============================================================================
+# Slice 7: Adaptive Mini-Exams & Session Résumés
+# ==============================================================================
+
+@app.post(
+    "/api/v1/sessions/{session_id}/mini-exam/start",
+    response_model=MiniExamPayload,
+)
+async def start_mini_exam(session_id: str) -> MiniExamPayload:
+    """Agent 8: Generates an adaptive 4-question mini-exam targeting session misconceptions (Slice 7)."""
+    redis_key = f"session:{session_id}"
+    session_data = redis_client.get(redis_key)
+    if not session_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session with id '{session_id}' not found.",
+        )
+    session = SessionState.model_validate_json(session_data)
+
+    exam_payload = generate_mini_exam(session)
+
+    # Cache exam payload in Redis for 86400 seconds
+    redis_client.setex(
+        f"exam:{session_id}",
+        86400,
+        exam_payload.model_dump_json(),
+    )
+    logger.info("Generated mini-exam %s for session %s", exam_payload.exam_id, session_id)
+    return exam_payload
+
+
+@app.post(
+    "/api/v1/sessions/{session_id}/mini-exam/submit",
+    response_model=ExamResult,
+)
+async def submit_mini_exam(
+    session_id: str,
+    payload: ExamSubmitRequest,
+) -> ExamResult:
+    """Grades mini-exam (Agent 8) and synthesizes permanent session résumé (Agent 9) (Slice 7)."""
+    redis_key = f"session:{session_id}"
+    session_data = redis_client.get(redis_key)
+    if not session_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session with id '{session_id}' not found.",
+        )
+    session = SessionState.model_validate_json(session_data)
+
+    # Retrieve cached exam
+    exam_data = redis_client.get(f"exam:{session_id}")
+    if exam_data:
+        exam = MiniExamPayload.model_validate_json(exam_data)
+    else:
+        # Fallback: re-generate exam if expired
+        exam = generate_mini_exam(session)
+
+    # 1. Grade exam via Agent 8
+    submissions_list = [s.model_dump() for s in payload.submissions]
+    exam_result = grade_mini_exam(session, exam, submissions_list)
+
+    # 2. Synthesize session résumé & update spaced repetition via Agent 9
+    try:
+        resume_artifact = synthesize_session_resume(session, exam_result)
+        exam_result.resume = resume_artifact
+    except Exception as e:
+        logger.error("Error synthesizing session résumé: %s", e, exc_info=True)
+
+    # Cache result in Redis
+    redis_client.setex(
+        f"exam_result:{session_id}",
+        86400,
+        exam_result.model_dump_json(),
+    )
+    logger.info(
+        "Graded mini-exam for session %s: score=%.2f, passed=%s",
+        session_id,
+        exam_result.exam_score,
+        exam_result.passed,
+    )
+    return exam_result
+

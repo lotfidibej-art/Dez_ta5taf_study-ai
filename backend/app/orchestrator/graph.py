@@ -4,8 +4,10 @@ from typing import Any, Dict, Optional, Tuple, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from app.agents.adversarial_agent import generate_mastery_challenge
 from app.agents.explainer_agent import generate_foundation_board
 from app.agents.lab_fetcher import fetch_interactive_lab
+from app.agents.scaffolding_agent import generate_faded_workspace
 from app.orchestrator.graph_utils import build_networkx_dag
 from app.schemas.contracts import (
     AgentActionPayload,
@@ -135,44 +137,12 @@ def foundation_node(state: OrchestratorState) -> Dict[str, Any]:
     return {"session": updated_session, "action": board_payload}
 
 
-def scaffolding_stub(state: OrchestratorState) -> Dict[str, Any]:
-    """Agent 6 Stub: Renders Faded Workspace for practice mastery (0.40 .. 0.75)."""
+def scaffolding_node(state: OrchestratorState) -> Dict[str, Any]:
+    """Agent 6 Node: Renders Faded Workspace for practice mastery (0.40 .. 0.75)."""
     session = state["session"]
-    logger.info("Executing scaffolding_stub for concept=%s", session.active_concept_id)
+    logger.info("Executing scaffolding_node for concept=%s", session.active_concept_id)
 
-    action = FadedWorkspacePayload(
-        ui_component="FADED_EXAMPLE_WORKSPACE",
-        problem_statement="Complete the recursive accumulator function `sum_to_n(n)` which returns 1 + 2 + ... + n.",
-        steps=[
-            {
-                "step_number": 1,
-                "step_type": "WORKED",
-                "label": "Define Base Condition",
-                "code": "if n <= 1:\n    return n",
-                "annotation": "Guards against infinite decrement and handles base value.",
-            },
-            {
-                "step_number": 2,
-                "step_type": "WORKED",
-                "label": "Formulate Recurrence Relation",
-                "code": "# Total sum is current value n plus sum of remainder",
-                "annotation": "Decomposes sum_to_n(n) into n + sum_to_n(n - 1).",
-            },
-            {
-                "step_number": 3,
-                "step_type": "FADED",
-                "label": "Fill in Recursive Call",
-                "code": "return n + _______",
-                "expected_token": "sum_to_n(n - 1)",
-                "blank_id": "faded_step_3",
-            },
-        ],
-        active_hint={
-            "level": 1,
-            "hint_text": "Remember: you must invoke the function itself with the reduced subproblem (n - 1).",
-            "contingent_level": session.current_hint_level,
-        },
-    )
+    action = generate_faded_workspace(session)
 
     for node in session.concept_graph:
         if node.concept_id == session.active_concept_id:
@@ -182,44 +152,31 @@ def scaffolding_stub(state: OrchestratorState) -> Dict[str, Any]:
     updated_session = session.model_copy(
         update={
             "concept_graph": session.concept_graph,
+            "current_hint_level": 0,
             "last_technique_used": "FADED_WORKED_EXAMPLE",
         }
     )
     return {"session": updated_session, "action": action}
 
 
-def mastery_stub(state: OrchestratorState) -> Dict[str, Any]:
-    """Agent 7 Stub: Renders Misconception Trap for deep mastery (> 0.75)."""
+def mastery_node(state: OrchestratorState) -> Dict[str, Any]:
+    """Agent 7 Node: Renders Misconception Trap or Protégé Stage for deep mastery (> 0.75)."""
     session = state["session"]
-    logger.info("Executing mastery_stub for concept=%s", session.active_concept_id)
+    logger.info("Executing mastery_node for concept=%s", session.active_concept_id)
 
-    action = MisconceptionTrapPayload(
-        ui_component="MISCONCEPTION_TRAP",
-        scenario_intro=(
-            "A fellow student claims their Fibonacci function is 100% complete and verified. "
-            "Inspect the implementation and pinpoint the fatal edge-case bug."
-        ),
-        flawed_artifact=(
-            "def fibonacci(n: int) -> int:\n"
-            "    # Base case\n"
-            "    if n == 1:\n"
-            "        return 1\n"
-            "    # Recursive step\n"
-            "    return fibonacci(n - 1) + fibonacci(n - 2)"
-        ),
-        artifact_language="python",
-        hidden_flaw_tag="MISSING_ZERO_BASE_CASE_INFINITE_LOOP",
-    )
+    action = generate_mastery_challenge(session)
 
     for node in session.concept_graph:
         if node.concept_id == session.active_concept_id:
             node.attempts += 1
             break
 
+    last_tech = "MISCONCEPTION_TRAP" if action.ui_component == "MISCONCEPTION_TRAP" else "PROTEGE_TEACHING"
+
     updated_session = session.model_copy(
         update={
             "concept_graph": session.concept_graph,
-            "last_technique_used": "MISCONCEPTION_TRAP",
+            "last_technique_used": last_tech,
         }
     )
     return {"session": updated_session, "action": action}
@@ -250,9 +207,9 @@ def route_by_mastery(state: OrchestratorState) -> str:
     if mastery_rating < 0.40:
         return "foundation_node"
     elif mastery_rating <= 0.75:
-        return "scaffolding_stub"
+        return "scaffolding_node"
     else:
-        return "mastery_stub"
+        return "mastery_node"
 
 
 # ==============================================================================
@@ -262,22 +219,22 @@ def route_by_mastery(state: OrchestratorState) -> str:
 builder = StateGraph(OrchestratorState)
 
 builder.add_node("foundation_node", foundation_node)
-builder.add_node("scaffolding_stub", scaffolding_stub)
-builder.add_node("mastery_stub", mastery_stub)
+builder.add_node("scaffolding_node", scaffolding_node)
+builder.add_node("mastery_node", mastery_node)
 
 builder.add_conditional_edges(
     START,
     route_by_mastery,
     {
         "foundation_node": "foundation_node",
-        "scaffolding_stub": "scaffolding_stub",
-        "mastery_stub": "mastery_stub",
+        "scaffolding_node": "scaffolding_node",
+        "mastery_node": "mastery_node",
     },
 )
 
 builder.add_edge("foundation_node", END)
-builder.add_edge("scaffolding_stub", END)
-builder.add_edge("mastery_stub", END)
+builder.add_edge("scaffolding_node", END)
+builder.add_edge("mastery_node", END)
 
 orchestrator_graph = builder.compile()
 

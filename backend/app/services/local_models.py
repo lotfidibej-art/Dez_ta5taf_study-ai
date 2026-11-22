@@ -7,7 +7,14 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # Target filler words to detect hesitation/fluency patterns
-FILLER_WORDS = {"um", "uh", "like", "basically", "actually"}
+FILLER_WORDS = {"um", "uh", "erm", "like", "basically", "literally"}
+FILLER_PHRASES = ["sort of", "kind of"]
+SELF_CORRECTION_PATTERNS = [
+    re.compile(r"\bi mean\b", re.IGNORECASE),
+    re.compile(r"\bwait no\b", re.IGNORECASE),
+    re.compile(r"\bactually no\b", re.IGNORECASE),
+    re.compile(r"\brather\b", re.IGNORECASE),
+]
 WORD_CLEAN_REGEX = re.compile(r"[^\w\s]")
 
 
@@ -178,22 +185,43 @@ class LocalMLService:
         else:
             speech_rate_wpm = 0.0
 
-        # 3. Filler word ratio detection
+        # 3. Filler word ratio detection (single tokens + 2-word phrases)
         filler_count = 0
         for w in words_data:
             clean_word = WORD_CLEAN_REGEX.sub("", w.word.strip().lower())
             if clean_word in FILLER_WORDS:
                 filler_count += 1
 
+        lower_transcript = full_transcript.lower()
+        for phrase in FILLER_PHRASES:
+            matches = len(re.findall(r"\b" + re.escape(phrase) + r"\b", lower_transcript))
+            filler_count += matches
+
         filler_word_ratio = (
-            round(filler_count / total_words, 4) if total_words > 0 else 0.0
+            round(filler_count / max(total_words, 1), 4) if total_words > 0 else 0.0
         )
 
-        # 4. Monotone recitation / rote memorization heuristic
-        # High speed (>175 WPM) with zero hesitation pauses flags mechanical recall
+        # 4. Self-correction and phrase restarts
+        self_correction_count = 0
+        for pattern in SELF_CORRECTION_PATTERNS:
+            self_correction_count += len(pattern.findall(lower_transcript))
+
+        # 5. Monotone recitation / rote memorization heuristic
+        # Flag rapid, unreflective rote memorization: >= 15 words, > 170 WPM, 0 hesitation pauses, 0 self-corrections
         monotone_recitation_flag = bool(
-            speech_rate_wpm > 175.0 and hesitation_pause_count == 0 and total_words >= 5
+            total_words >= 15
+            and speech_rate_wpm > 170.0
+            and hesitation_pause_count == 0
+            and self_correction_count == 0
         )
+
+        # 6. High-level qualitative fluency signal
+        if monotone_recitation_flag:
+            fluency_signal = "Rushed Recitation — Try Explaining Why"
+        elif hesitation_pause_count >= 2 or filler_word_ratio > 0.12:
+            fluency_signal = "Deliberative Hesitation — Exploring Mechanics"
+        else:
+            fluency_signal = "Natural Causal Reasoning"
 
         return {
             "transcript": full_transcript,
@@ -201,5 +229,8 @@ class LocalMLService:
             "hesitation_pause_count": hesitation_pause_count,
             "max_pause_sec": round(max_pause_sec, 2),
             "filler_word_ratio": filler_word_ratio,
+            "self_correction_count": self_correction_count,
             "monotone_recitation_flag": monotone_recitation_flag,
+            "fluency_signal": fluency_signal,
+            "total_words": total_words,
         }

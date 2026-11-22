@@ -188,6 +188,13 @@ def generate_foundation_board(
             "Address this subtly in the study_habit_nudge."
         )
 
+    analogy_req = (
+        "3. bridge_analogy: REQUIRED for ENRICHED_EXTERNAL. Create a concrete, intuitive real-world or cross-domain analogy "
+        "(source_concept, target_concept, mapping) explaining the concept through a familiar system."
+        if scope == "ENRICHED_EXTERNAL"
+        else "3. bridge_analogy: Leave null unless grounded in source excerpts or prior memory."
+    )
+
     prompt = (
         f"Domain: {session_state.domain}\n"
         f"Primary Topic: {session_state.topic_title}\n"
@@ -201,9 +208,9 @@ def generate_foundation_board(
         f"{analogy_prompt}\n"
         f"{nudge_context}\n\n"
         "Generate the Foundation Board contents:\n"
-        "1. bullet_breakdown: 3 to 5 clear bullet points dissecting the mechanism.\n"
+        "1. bullet_breakdown: 3 to 5 clear bullet points dissecting the mechanism (cite source excerpts if present).\n"
         "2. raw_mermaid_diagram: A clean flowchart TD diagram illustrating state/causal flow.\n"
-        "3. bridge_analogy: If applicable, a source_concept -> target_concept mapping.\n"
+        f"{analogy_req}\n"
         "4. study_habit_nudge: 1 actionable metacognitive tip."
     )
 
@@ -224,6 +231,13 @@ def generate_foundation_board(
                 "source_concept": structured_resp.bridge_analogy.source_concept,
                 "target_concept": structured_resp.bridge_analogy.target_concept,
                 "mapping": structured_resp.bridge_analogy.mapping,
+            }
+        elif scope == "ENRICHED_EXTERNAL":
+            active_title = active_concept.get("title", session_state.topic_title)
+            bridge_dict = {
+                "source_concept": "Everyday Mechanical Equilibrium",
+                "target_concept": active_title,
+                "mapping": f"Just like a pendulum always seeks its lowest resting point and counteracts any displacement, {active_title} dynamically balances internal forces.",
             }
 
         return FoundationBoardPayload(

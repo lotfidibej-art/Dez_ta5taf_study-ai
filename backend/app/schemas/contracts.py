@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
@@ -83,6 +85,24 @@ class SessionState(BaseModel):
         default="INITIAL_DIAGNOSTIC",
         description="Identifier of the most recent pedagogical technique rendered.",
     )
+    protege_turn_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of consecutive protégé teaching turns completed on the active concept.",
+    )
+    consecutive_mistakes: int = Field(
+        default=0,
+        ge=0,
+        description="Sequential mistake count on the active concept.",
+    )
+    active_remediation: Optional[RemediationFeedback] = Field(
+        default=None,
+        description="Active mistake counter-example and progressive auto-hint.",
+    )
+    last_action_payload: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Caches the current problem/workspace in Redis so retries keep the exact same problem state.",
+    )
 
 
 # ==============================================================================
@@ -124,6 +144,7 @@ class FadedWorkspacePayload(BaseModel):
         default="FADED_EXAMPLE_WORKSPACE",
         description="Discriminated union selector for UI component routing.",
     )
+    concept_id: str = Field(default="", description="Concept under practice.")
     problem_statement: str = Field(..., description="Challenge prompt or code objective.")
     steps: List[Dict[str, Any]] = Field(
         ...,
@@ -141,6 +162,7 @@ class MisconceptionTrapPayload(BaseModel):
         default="MISCONCEPTION_TRAP",
         description="Discriminated union selector for UI component routing.",
     )
+    concept_id: str = Field(default="", description="Concept under challenge.")
     scenario_intro: str = Field(
         ...,
         description="Prompt framing the subtle bug or conceptual fallacy to uncover.",
@@ -165,6 +187,7 @@ class ProtegeStagePayload(BaseModel):
         default="PROTEGE_VOICE_STAGE",
         description="Discriminated union selector for UI component routing.",
     )
+    concept_id: str = Field(default="", description="Concept to teach.")
     ai_persona_question: str = Field(
         ...,
         description="Question asked by the AI student requiring human explanation.",
@@ -176,6 +199,14 @@ class ProtegeStagePayload(BaseModel):
     require_voice_input: bool = Field(
         default=True,
         description="Flags frontend to record speech and extract prosody metrics.",
+    )
+    follow_up_pushback: Optional[str] = Field(
+        default=None,
+        description="Targeted follow-up Socratic question when prior explanation missed core points.",
+    )
+    turn_number: int = Field(
+        default=1,
+        description="Dialogue turn index in the protégé interaction sequence.",
     )
 
 
@@ -230,6 +261,12 @@ class TurnEvaluation(BaseModel):
     )
 
 
+class ConqueredMisconceptionItem(BaseModel):
+    false_belief: str
+    corrected_truth: str
+    concept_id: Optional[str] = None
+
+
 class SessionResumeArtifact(BaseModel):
     """Permanent post-session scannable summary card."""
     session_id: str
@@ -242,7 +279,7 @@ class SessionResumeArtifact(BaseModel):
         default_factory=list,
         description="Analogies that triggered high comprehension jumps.",
     )
-    misconceptions_conquered: List[str] = Field(
+    misconceptions_conquered: List[Union[Dict[str, str], ConqueredMisconceptionItem, str]] = Field(
         default_factory=list,
         description="Traps student successfully resolved.",
     )
@@ -253,6 +290,15 @@ class SessionResumeArtifact(BaseModel):
     recommended_refresher_date: str = Field(
         ..., description="Spaced repetition next review target."
     )
+    initial_mastery: float = Field(default=0.0)
+    final_mastery: float = Field(default=0.0)
+    mastery_velocity: float = Field(default=0.0, description="Mastery delta per minute.")
+    duration_minutes: float = Field(default=0.0)
+    most_effective_technique: Optional[str] = Field(default=None)
+    exam_score: Optional[float] = Field(default=None)
+    next_spaced_review_at: Optional[str] = Field(default=None)
+    analytics: Dict[str, Any] = Field(default_factory=dict)
+    due_for_review: bool = Field(default=False)
 
 
 # ==============================================================================
@@ -344,6 +390,22 @@ class UnderstandingCheckRequest(BaseModel):
     concept_id: Optional[str] = Field(None, description="Optional target concept ID; defaults to active_concept_id.")
 
 
+# ==============================================================================
+# Slice 5 Voice Prosody Signals
+# ==============================================================================
+
+class VoiceProsodySignals(BaseModel):
+    transcript: str = Field(default="", description="Transcribed student audio.")
+    speech_rate_wpm: float = Field(default=0.0, description="Calculated words per minute.")
+    hesitation_pause_count: int = Field(default=0, description="Inter-word pauses > 1.5s.")
+    max_pause_sec: float = Field(default=0.0, description="Longest pause duration in seconds.")
+    filler_word_ratio: float = Field(default=0.0, description="Ratio of filler words to total words.")
+    self_correction_count: int = Field(default=0, description="Detected phrase restarts or self-corrections.")
+    monotone_recitation_flag: bool = Field(default=False, description="Flag for high-speed unreflective recall.")
+    fluency_signal: Optional[str] = Field(default=None, description="Qualitative speech fluency classification.")
+    total_words: int = Field(default=0, description="Total word count in transcription.")
+
+
 class UnderstandingCheckResponse(BaseModel):
     session: SessionState
     action: AgentActionPayload
@@ -353,5 +415,244 @@ class UnderstandingCheckResponse(BaseModel):
     feedback: str
     identified_misconception: Optional[str] = None
     advanced_tier: bool = Field(..., description="True if student advanced out of Foundation tier (<0.40).")
+    prosody_signals: Optional[VoiceProsodySignals] = Field(
+        default=None,
+        description="Prosody signals extracted if voice audio was submitted.",
+    )
+    remediation: Optional[RemediationFeedback] = Field(
+        default=None,
+        description="Mistake counter-example and progressive auto-hint if understanding check fell short.",
+    )
+
+
+# ==============================================================================
+# 7. Slice 4 Scaffolding, Traps & Self-Guided Contracts
+# ==============================================================================
+
+class SourceCitation(BaseModel):
+    file_name: str
+    page_or_timestamp: str
+
+
+class ContingentHint(BaseModel):
+    level: int = Field(..., ge=1, le=3)
+    hint_text: str
+    hint_type: Literal["CONCEPTUAL_NUDGE", "SOURCE_POINTER", "STRUCTURAL_SKELETON"]
+    source_citation: Optional[SourceCitation] = None
+    skeleton_template: Optional[str] = None
+
+
+class HintResponse(BaseModel):
+    session: SessionState
+    active_hint: ContingentHint
+    hint_level: int
+
+
+class SubmitTurnRequest(BaseModel):
+    text_input: str = Field(..., description="Student's written explanation or overall answer.")
+    step_answers: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Keyed responses for individual faded steps (e.g. {'3': 'n + sum_to_n(n-1)'}).",
+    )
+    response_latency_sec: float = Field(
+        default=0.0,
+        description="Time taken to submit the response in seconds.",
+    )
+
+
+class TurnEvaluationItem(BaseModel):
+    factual_accuracy: float = Field(..., ge=0.0, le=1.0)
+    causal_depth: float = Field(..., ge=0.0, le=1.0)
+    feedback: str
+    identified_misconception: Optional[str] = None
+    hint_penalty_applied: float = Field(
+        default=0.0,
+        description="Penalty deducted from score based on hint level (-0.03 per hint level).",
+    )
+    prosody_signals: Optional[VoiceProsodySignals] = Field(
+        default=None,
+        description="Prosody signals extracted if turn was submitted via voice.",
+    )
+
+
+class SubmitTurnResponse(BaseModel):
+    session: SessionState
+    evaluation: TurnEvaluationItem
+    action: AgentActionPayload
+    updated_mastery_rating: float = Field(..., ge=0.0, le=1.0)
+    concept_mastered: bool = Field(
+        default=False,
+        description="True if updated_mastery_rating >= 0.85 and concept advanced.",
+    )
+    remediation: Optional[RemediationFeedback] = Field(
+        default=None,
+        description="Active counter-example and progressive auto-hint attached when a mistake occurs.",
+    )
+
+
+# ==============================================================================
+# 8. Slice 6 Mistake Remediation Contracts
+# ==============================================================================
+
+class CounterExample(BaseModel):
+    title: str = Field(
+        default="Counter-Example: When Your Rule Breaks",
+        description="Attention-focusing title highlighting the specific edge condition.",
+    )
+    input_or_scenario: str = Field(
+        ...,
+        description="Concrete edge-case input, code trace, or domain counter-case.",
+    )
+    expected_vs_student_outcome: str = Field(
+        ...,
+        description="Contrasts what the student's assumption predicts vs. what actually occurs.",
+    )
+
+
+class AutoHint(BaseModel):
+    level: Literal[1, 2, 3] = Field(
+        ...,
+        description="Progressive guidance level (1 = conceptual nudge, 2 = source pointer, 3 = structural skeleton).",
+    )
+    hint_text: str = Field(
+        ...,
+        description="Actionable clue pointing toward resolution without giving away the final answer.",
+    )
+    source_citation: Optional[SourceCitation] = Field(
+        default=None,
+        description="Exact file_name and page/timestamp on Level 2+.",
+    )
+
+
+class RemediationFeedback(BaseModel):
+    is_mistake: bool = Field(default=True, description="True if student answer failed correctness/depth thresholds.")
+    consecutive_mistakes: int = Field(default=1, description="Number of sequential mistakes on this concept.")
+    diagnosis_summary: str = Field(
+        ...,
+        description="1-2 sentences explaining what went wrong in the student's reasoning.",
+    )
+    counter_example: CounterExample
+    auto_hint: AutoHint
+    should_backtrack_prerequisite: bool = Field(
+        default=False,
+        description="True if student has stalled across multiple attempts and needs prerequisite reinforcement.",
+    )
+
+
+class SelfGuidedInjectRequest(BaseModel):
+    selected_text: str = Field(..., description="Highlighted text snippet from the document.")
+    intent: Literal["EXPLAIN", "QUIZ"] = Field(
+        ...,
+        description="'EXPLAIN' maps to 0.30 mastery (Foundation); 'QUIZ' maps to 0.55 mastery (Scaffolding).",
+    )
+
+
+class SelfGuidedInjectResponse(BaseModel):
+    session: SessionState
+    action: AgentActionPayload
+    concept_id: str
+    concept_title: str
+    assigned_mastery_rating: float
+    intent: Literal["EXPLAIN", "QUIZ"]
+
+
+# ==============================================================================
+# 10. Adaptive Mini-Exam & Analytics Contracts (Slice 7)
+# ==============================================================================
+
+class MiniExamQuestion(BaseModel):
+    question_id: str
+    type: Literal["MCQ", "FADED_TRANSFER", "CAUSAL_SYNTHESIS"]
+    prompt: str
+    options: Optional[List[str]] = Field(
+        default=None,
+        description="Distractor and correct options for MCQs (targeted at misconceptions).",
+    )
+    faded_context: Optional[str] = Field(
+        default=None,
+        description="Partial scenario or code context for faded transfer problems.",
+    )
+    target_concept_id: str
+
+
+class MiniExamPayload(BaseModel):
+    exam_id: str
+    session_id: str
+    questions: List[MiniExamQuestion]
+    hints_enabled: bool = False
+    instructions: str = Field(
+        default="Complete all 4 questions. Hints are disabled during this final check.",
+        description="Instructions for the mini-exam.",
+    )
+
+
+class ExamAnswerSubmission(BaseModel):
+    question_id: str
+    answer: str
+
+
+class ExamSubmitRequest(BaseModel):
+    submissions: List[ExamAnswerSubmission]
+
+
+class ExamGradedItem(BaseModel):
+    question_id: str
+    score: float = Field(..., ge=0.0, le=1.0)
+    student_answer: str
+    feedback: str
+    lingering_flaw: Optional[str] = None
+
+
+class ExamResult(BaseModel):
+    exam_id: str
+    session_id: str
+    exam_score: float = Field(..., ge=0.0, le=1.0)
+    passed: bool
+    graded_questions: List[ExamGradedItem]
+    lingering_weak_concepts: List[str] = Field(default_factory=list)
+    resume: Optional[SessionResumeArtifact] = None
+
+
+class AnalyticsKPIs(BaseModel):
+    global_mastery_avg: float
+    mastery_delta_30d: float
+    avg_mastery_velocity_per_min: float
+    durable_retention_rate: float
+    surface_memorization_drop_pct: float
+
+
+class FieldMastery(BaseModel):
+    domain: str
+    mastery_score: float
+    concepts_mastered: int
+    concepts_in_progress: int
+    best_technique: str
+
+
+class TechniqueStat(BaseModel):
+    technique: str
+    avg_rating_gain: float
+    usage_count: int
+
+
+class MasterySpeedTimeseriesPoint(BaseModel):
+    week: str
+    cumulative_mastered: int
+    avg_minutes_to_mastery: float
+
+
+class LessonsLearnedVault(BaseModel):
+    conquered_misconceptions: List[Dict[str, Any]] = Field(default_factory=list)
+    recent_resumes: List[SessionResumeArtifact] = Field(default_factory=list)
+
+
+class StudentAnalyticsDashboard(BaseModel):
+    student_id: str
+    kpis: AnalyticsKPIs
+    mastery_per_field: List[FieldMastery]
+    learning_style_effectiveness: Dict[str, List[TechniqueStat]]
+    mastery_speed_timeseries: List[MasterySpeedTimeseriesPoint]
+    lessons_learned_vault: LessonsLearnedVault
+
 
 

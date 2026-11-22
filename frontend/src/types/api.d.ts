@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/students/{student_id}/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Student Analytics
+         * @description Aggregates multi-session KPIs, domain masteries, and spaced repetition queue (Slice 7).
+         */
+        get: operations["get_student_analytics_api_v1_students__student_id__analytics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -149,6 +169,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/check-understanding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Understanding
+         * @description Evaluates student's 'explain it back in your own words' response on the Foundation Board.
+         *
+         *     Supports both application/json and multipart/form-data with optional audio_file.
+         *     1. Retrieves SessionState from Redis.
+         *     2. Analyzes voice prosody if audio_file is provided.
+         *     3. Evaluates student response via Agent 3.
+         *     4. Enforces surface memorization guard & hesitation support.
+         *     5. Updates multi-armed bandit weights and logs telemetry.
+         *     6. Re-runs LangGraph state machine and persists to Redis.
+         */
+        post: operations["check_understanding_api_v1_sessions__session_id__check_understanding_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/hint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request Contingent Hint
+         * @description Delivers progressive scaffolding via the Contingent Hint Ladder (Levels 1 to 3).
+         *
+         *     Level 1: Socratic conceptual nudge.
+         *     Level 2: Strict source pointer quoting exact file & page/timestamp from resource_chunks.
+         *     Level 3: Formula / code structural skeleton with blanks.
+         */
+        post: operations["request_contingent_hint_api_v1_sessions__session_id__hint_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/submit-turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Turn
+         * @description Unified turn evaluator for Faded Steps, Misconception Traps, and Protégé Challenges.
+         *
+         *     Supports both application/json and multipart/form-data with optional audio_file.
+         *     1. Retrieves SessionState and active action from Redis.
+         *     2. Runs LocalMLService.analyze_voice() if an audio_file is attached.
+         *     3. Grades response with Agent 3 (evaluator_agent), incorporating spoken prosody signals.
+         *     4. Updates Multi-Armed Bandit weights in PostgreSQL and syncs to Redis.
+         *     5. Advances concept or routes to next pedagogical tier via LangGraph.
+         */
+        post: operations["submit_turn_api_v1_sessions__session_id__submit_turn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Resource Chunks
+         * @description Retrieves all ingested multimodal resource chunks with source citations for Self-Guided reading.
+         */
+        get: operations["get_session_resource_chunks_api_v1_sessions__session_id__chunks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/self-guided/inject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Self Guided Inject
+         * @description Maps highlighted text in Self-Guided mode to its closest concept node via pgvector,
+         *
+         *     sets the calibrated initial rating (0.30 for EXPLAIN -> Foundation; 0.55 for QUIZ -> Scaffolding),
+         *     and routes directly into the LangGraph state machine.
+         */
+        post: operations["self_guided_inject_api_v1_sessions__session_id__self_guided_inject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/voice/analyze": {
         parameters: {
             query?: never;
@@ -169,10 +311,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{session_id}/mini-exam/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Mini Exam
+         * @description Agent 8: Generates an adaptive 4-question mini-exam targeting session misconceptions (Slice 7).
+         */
+        post: operations["start_mini_exam_api_v1_sessions__session_id__mini_exam_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/mini-exam/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Mini Exam
+         * @description Grades mini-exam (Agent 8) and synthesizes permanent session résumé (Agent 9) (Slice 7).
+         */
+        post: operations["submit_mini_exam_api_v1_sessions__session_id__mini_exam_submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnalyticsKPIs */
+        AnalyticsKPIs: {
+            /** Global Mastery Avg */
+            global_mastery_avg: number;
+            /** Mastery Delta 30D */
+            mastery_delta_30d: number;
+            /** Avg Mastery Velocity Per Min */
+            avg_mastery_velocity_per_min: number;
+            /** Durable Retention Rate */
+            durable_retention_rate: number;
+            /** Surface Memorization Drop Pct */
+            surface_memorization_drop_pct: number;
+        };
+        /** AutoHint */
+        AutoHint: {
+            /**
+             * Level
+             * @description Progressive guidance level (1 = conceptual nudge, 2 = source pointer, 3 = structural skeleton).
+             * @enum {integer}
+             */
+            level: 1 | 2 | 3;
+            /**
+             * Hint Text
+             * @description Actionable clue pointing toward resolution without giving away the final answer.
+             */
+            hint_text: string;
+            /** @description Exact file_name and page/timestamp on Level 2+. */
+            source_citation?: components["schemas"]["SourceCitation"] | null;
+        };
         /** Body_analyze_voice_api_v1_voice_analyze_post */
         Body_analyze_voice_api_v1_voice_analyze_post: {
             /**
@@ -268,6 +479,49 @@ export interface components {
              */
             summary_hook?: string | null;
         };
+        /** ConqueredMisconceptionItem */
+        ConqueredMisconceptionItem: {
+            /** False Belief */
+            false_belief: string;
+            /** Corrected Truth */
+            corrected_truth: string;
+            /** Concept Id */
+            concept_id?: string | null;
+        };
+        /** ContingentHint */
+        ContingentHint: {
+            /** Level */
+            level: number;
+            /** Hint Text */
+            hint_text: string;
+            /**
+             * Hint Type
+             * @enum {string}
+             */
+            hint_type: "CONCEPTUAL_NUDGE" | "SOURCE_POINTER" | "STRUCTURAL_SKELETON";
+            source_citation?: components["schemas"]["SourceCitation"] | null;
+            /** Skeleton Template */
+            skeleton_template?: string | null;
+        };
+        /** CounterExample */
+        CounterExample: {
+            /**
+             * Title
+             * @description Attention-focusing title highlighting the specific edge condition.
+             * @default Counter-Example: When Your Rule Breaks
+             */
+            title: string;
+            /**
+             * Input Or Scenario
+             * @description Concrete edge-case input, code trace, or domain counter-case.
+             */
+            input_or_scenario: string;
+            /**
+             * Expected Vs Student Outcome
+             * @description Contrasts what the student's assumption predicts vs. what actually occurs.
+             */
+            expected_vs_student_outcome: string;
+        };
         /** DiagnosticAnswer */
         DiagnosticAnswer: {
             /**
@@ -350,6 +604,47 @@ export interface components {
              */
             answers: components["schemas"]["DiagnosticAnswer"][];
         };
+        /** ExamAnswerSubmission */
+        ExamAnswerSubmission: {
+            /** Question Id */
+            question_id: string;
+            /** Answer */
+            answer: string;
+        };
+        /** ExamGradedItem */
+        ExamGradedItem: {
+            /** Question Id */
+            question_id: string;
+            /** Score */
+            score: number;
+            /** Student Answer */
+            student_answer: string;
+            /** Feedback */
+            feedback: string;
+            /** Lingering Flaw */
+            lingering_flaw?: string | null;
+        };
+        /** ExamResult */
+        ExamResult: {
+            /** Exam Id */
+            exam_id: string;
+            /** Session Id */
+            session_id: string;
+            /** Exam Score */
+            exam_score: number;
+            /** Passed */
+            passed: boolean;
+            /** Graded Questions */
+            graded_questions: components["schemas"]["ExamGradedItem"][];
+            /** Lingering Weak Concepts */
+            lingering_weak_concepts?: string[];
+            resume?: components["schemas"]["SessionResumeArtifact"] | null;
+        };
+        /** ExamSubmitRequest */
+        ExamSubmitRequest: {
+            /** Submissions */
+            submissions: components["schemas"]["ExamAnswerSubmission"][];
+        };
         /**
          * FadedWorkspacePayload
          * @description Action payload rendered when 0.40 <= conceptMastery <= 0.75.
@@ -360,6 +655,12 @@ export interface components {
              * @enum {string}
              */
             ui_component: "FADED_EXAMPLE_WORKSPACE";
+            /**
+             * Concept Id
+             * @description Concept under practice.
+             * @default
+             */
+            concept_id: string;
             /**
              * Problem Statement
              * @description Challenge prompt or code objective.
@@ -379,6 +680,19 @@ export interface components {
             active_hint?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** FieldMastery */
+        FieldMastery: {
+            /** Domain */
+            domain: string;
+            /** Mastery Score */
+            mastery_score: number;
+            /** Concepts Mastered */
+            concepts_mastered: number;
+            /** Concepts In Progress */
+            concepts_in_progress: number;
+            /** Best Technique */
+            best_technique: string;
         };
         /**
          * FoundationBoardPayload
@@ -430,6 +744,75 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HintResponse */
+        HintResponse: {
+            session: components["schemas"]["SessionState"];
+            active_hint: components["schemas"]["ContingentHint"];
+            /** Hint Level */
+            hint_level: number;
+        };
+        /** LessonsLearnedVault */
+        LessonsLearnedVault: {
+            /** Conquered Misconceptions */
+            conquered_misconceptions?: {
+                [key: string]: unknown;
+            }[];
+            /** Recent Resumes */
+            recent_resumes?: components["schemas"]["SessionResumeArtifact"][];
+        };
+        /** MasterySpeedTimeseriesPoint */
+        MasterySpeedTimeseriesPoint: {
+            /** Week */
+            week: string;
+            /** Cumulative Mastered */
+            cumulative_mastered: number;
+            /** Avg Minutes To Mastery */
+            avg_minutes_to_mastery: number;
+        };
+        /** MiniExamPayload */
+        MiniExamPayload: {
+            /** Exam Id */
+            exam_id: string;
+            /** Session Id */
+            session_id: string;
+            /** Questions */
+            questions: components["schemas"]["MiniExamQuestion"][];
+            /**
+             * Hints Enabled
+             * @default false
+             */
+            hints_enabled: boolean;
+            /**
+             * Instructions
+             * @description Instructions for the mini-exam.
+             * @default Complete all 4 questions. Hints are disabled during this final check.
+             */
+            instructions: string;
+        };
+        /** MiniExamQuestion */
+        MiniExamQuestion: {
+            /** Question Id */
+            question_id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "MCQ" | "FADED_TRANSFER" | "CAUSAL_SYNTHESIS";
+            /** Prompt */
+            prompt: string;
+            /**
+             * Options
+             * @description Distractor and correct options for MCQs (targeted at misconceptions).
+             */
+            options?: string[] | null;
+            /**
+             * Faded Context
+             * @description Partial scenario or code context for faded transfer problems.
+             */
+            faded_context?: string | null;
+            /** Target Concept Id */
+            target_concept_id: string;
+        };
         /**
          * MisconceptionTrapPayload
          * @description Action payload rendered when conceptMastery > 0.75 (Adversarial Challenge).
@@ -440,6 +823,12 @@ export interface components {
              * @enum {string}
              */
             ui_component: "MISCONCEPTION_TRAP";
+            /**
+             * Concept Id
+             * @description Concept under challenge.
+             * @default
+             */
+            concept_id: string;
             /**
              * Scenario Intro
              * @description Prompt framing the subtle bug or conceptual fallacy to uncover.
@@ -512,6 +901,12 @@ export interface components {
              */
             ui_component: "PROTEGE_VOICE_STAGE";
             /**
+             * Concept Id
+             * @description Concept to teach.
+             * @default
+             */
+            concept_id: string;
+            /**
              * Ai Persona Question
              * @description Question asked by the AI student requiring human explanation.
              */
@@ -527,6 +922,93 @@ export interface components {
              * @default true
              */
             require_voice_input: boolean;
+            /**
+             * Follow Up Pushback
+             * @description Targeted follow-up Socratic question when prior explanation missed core points.
+             */
+            follow_up_pushback?: string | null;
+            /**
+             * Turn Number
+             * @description Dialogue turn index in the protégé interaction sequence.
+             * @default 1
+             */
+            turn_number: number;
+        };
+        /** RemediationFeedback */
+        RemediationFeedback: {
+            /**
+             * Is Mistake
+             * @description True if student answer failed correctness/depth thresholds.
+             * @default true
+             */
+            is_mistake: boolean;
+            /**
+             * Consecutive Mistakes
+             * @description Number of sequential mistakes on this concept.
+             * @default 1
+             */
+            consecutive_mistakes: number;
+            /**
+             * Diagnosis Summary
+             * @description 1-2 sentences explaining what went wrong in the student's reasoning.
+             */
+            diagnosis_summary: string;
+            counter_example: components["schemas"]["CounterExample"];
+            auto_hint: components["schemas"]["AutoHint"];
+            /**
+             * Should Backtrack Prerequisite
+             * @description True if student has stalled across multiple attempts and needs prerequisite reinforcement.
+             * @default false
+             */
+            should_backtrack_prerequisite: boolean;
+        };
+        /** ResourceChunk */
+        ResourceChunk: {
+            /** Chunk Id */
+            chunk_id: string;
+            /** Session Id */
+            session_id: string;
+            /** Student Id */
+            student_id: string;
+            /** Concept Id */
+            concept_id?: string | null;
+            /** Content */
+            content: string;
+            /** Source Name */
+            source_name: string;
+            /** Source Location */
+            source_location: string;
+        };
+        /** SelfGuidedInjectRequest */
+        SelfGuidedInjectRequest: {
+            /**
+             * Selected Text
+             * @description Highlighted text snippet from the document.
+             */
+            selected_text: string;
+            /**
+             * Intent
+             * @description 'EXPLAIN' maps to 0.30 mastery (Foundation); 'QUIZ' maps to 0.55 mastery (Scaffolding).
+             * @enum {string}
+             */
+            intent: "EXPLAIN" | "QUIZ";
+        };
+        /** SelfGuidedInjectResponse */
+        SelfGuidedInjectResponse: {
+            session: components["schemas"]["SessionState"];
+            /** Action */
+            action: components["schemas"]["FoundationBoardPayload"] | components["schemas"]["FadedWorkspacePayload"] | components["schemas"]["MisconceptionTrapPayload"] | components["schemas"]["ProtegeStagePayload"];
+            /** Concept Id */
+            concept_id: string;
+            /** Concept Title */
+            concept_title: string;
+            /** Assigned Mastery Rating */
+            assigned_mastery_rating: number;
+            /**
+             * Intent
+             * @enum {string}
+             */
+            intent: "EXPLAIN" | "QUIZ";
         };
         /** SessionInitResponse */
         SessionInitResponse: {
@@ -539,6 +1021,85 @@ export interface components {
              * @default 0
              */
             extracted_chunk_count: number;
+        };
+        /**
+         * SessionResumeArtifact
+         * @description Permanent post-session scannable summary card.
+         */
+        SessionResumeArtifact: {
+            /** Session Id */
+            session_id: string;
+            /** Student Id */
+            student_id: string;
+            /** Domain */
+            domain: string;
+            /**
+             * Core Mental Model
+             * @description 3-sentence synthesis of how the concept works.
+             */
+            core_mental_model: string;
+            /**
+             * Winning Analogies
+             * @description Analogies that triggered high comprehension jumps.
+             */
+            winning_analogies?: {
+                [key: string]: string;
+            }[];
+            /**
+             * Misconceptions Conquered
+             * @description Traps student successfully resolved.
+             */
+            misconceptions_conquered?: ({
+                [key: string]: string;
+            } | components["schemas"]["ConqueredMisconceptionItem"] | string)[];
+            /**
+             * Final Mastery Ratings
+             * @description Ending score per concept node.
+             */
+            final_mastery_ratings?: {
+                [key: string]: number;
+            };
+            /**
+             * Recommended Refresher Date
+             * @description Spaced repetition next review target.
+             */
+            recommended_refresher_date: string;
+            /**
+             * Initial Mastery
+             * @default 0
+             */
+            initial_mastery: number;
+            /**
+             * Final Mastery
+             * @default 0
+             */
+            final_mastery: number;
+            /**
+             * Mastery Velocity
+             * @description Mastery delta per minute.
+             * @default 0
+             */
+            mastery_velocity: number;
+            /**
+             * Duration Minutes
+             * @default 0
+             */
+            duration_minutes: number;
+            /** Most Effective Technique */
+            most_effective_technique?: string | null;
+            /** Exam Score */
+            exam_score?: number | null;
+            /** Next Spaced Review At */
+            next_spaced_review_at?: string | null;
+            /** Analytics */
+            analytics?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Due For Review
+             * @default false
+             */
+            due_for_review: boolean;
         };
         /**
          * SessionState
@@ -622,6 +1183,119 @@ export interface components {
              * @default INITIAL_DIAGNOSTIC
              */
             last_technique_used: string;
+            /**
+             * Protege Turn Count
+             * @description Number of consecutive protégé teaching turns completed on the active concept.
+             * @default 0
+             */
+            protege_turn_count: number;
+            /**
+             * Consecutive Mistakes
+             * @description Sequential mistake count on the active concept.
+             * @default 0
+             */
+            consecutive_mistakes: number;
+            /** @description Active mistake counter-example and progressive auto-hint. */
+            active_remediation?: components["schemas"]["RemediationFeedback"] | null;
+            /**
+             * Last Action Payload
+             * @description Caches the current problem/workspace in Redis so retries keep the exact same problem state.
+             */
+            last_action_payload?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** SourceCitation */
+        SourceCitation: {
+            /** File Name */
+            file_name: string;
+            /** Page Or Timestamp */
+            page_or_timestamp: string;
+        };
+        /** StudentAnalyticsDashboard */
+        StudentAnalyticsDashboard: {
+            /** Student Id */
+            student_id: string;
+            kpis: components["schemas"]["AnalyticsKPIs"];
+            /** Mastery Per Field */
+            mastery_per_field: components["schemas"]["FieldMastery"][];
+            /** Learning Style Effectiveness */
+            learning_style_effectiveness: {
+                [key: string]: components["schemas"]["TechniqueStat"][];
+            };
+            /** Mastery Speed Timeseries */
+            mastery_speed_timeseries: components["schemas"]["MasterySpeedTimeseriesPoint"][];
+            lessons_learned_vault: components["schemas"]["LessonsLearnedVault"];
+        };
+        /** SubmitTurnResponse */
+        SubmitTurnResponse: {
+            session: components["schemas"]["SessionState"];
+            evaluation: components["schemas"]["TurnEvaluationItem"];
+            /** Action */
+            action: components["schemas"]["FoundationBoardPayload"] | components["schemas"]["FadedWorkspacePayload"] | components["schemas"]["MisconceptionTrapPayload"] | components["schemas"]["ProtegeStagePayload"];
+            /** Updated Mastery Rating */
+            updated_mastery_rating: number;
+            /**
+             * Concept Mastered
+             * @description True if updated_mastery_rating >= 0.85 and concept advanced.
+             * @default false
+             */
+            concept_mastered: boolean;
+            /** @description Active counter-example and progressive auto-hint attached when a mistake occurs. */
+            remediation?: components["schemas"]["RemediationFeedback"] | null;
+        };
+        /** TechniqueStat */
+        TechniqueStat: {
+            /** Technique */
+            technique: string;
+            /** Avg Rating Gain */
+            avg_rating_gain: number;
+            /** Usage Count */
+            usage_count: number;
+        };
+        /** TurnEvaluationItem */
+        TurnEvaluationItem: {
+            /** Factual Accuracy */
+            factual_accuracy: number;
+            /** Causal Depth */
+            causal_depth: number;
+            /** Feedback */
+            feedback: string;
+            /** Identified Misconception */
+            identified_misconception?: string | null;
+            /**
+             * Hint Penalty Applied
+             * @description Penalty deducted from score based on hint level (-0.03 per hint level).
+             * @default 0
+             */
+            hint_penalty_applied: number;
+            /** @description Prosody signals extracted if turn was submitted via voice. */
+            prosody_signals?: components["schemas"]["VoiceProsodySignals"] | null;
+        };
+        /** UnderstandingCheckResponse */
+        UnderstandingCheckResponse: {
+            session: components["schemas"]["SessionState"];
+            /** Action */
+            action: components["schemas"]["FoundationBoardPayload"] | components["schemas"]["FadedWorkspacePayload"] | components["schemas"]["MisconceptionTrapPayload"] | components["schemas"]["ProtegeStagePayload"];
+            /** Factual Accuracy */
+            factual_accuracy: number;
+            /** Causal Depth */
+            causal_depth: number;
+            /** Updated Mastery Rating */
+            updated_mastery_rating: number;
+            /** Feedback */
+            feedback: string;
+            /** Identified Misconception */
+            identified_misconception?: string | null;
+            /**
+             * Advanced Tier
+             * @description True if student advanced out of Foundation tier (<0.40).
+             */
+            advanced_tier: boolean;
+            /** @description Prosody signals extracted if voice audio was submitted. */
+            prosody_signals?: components["schemas"]["VoiceProsodySignals"] | null;
+            /** @description Mistake counter-example and progressive auto-hint if understanding check fell short. */
+            remediation?: components["schemas"]["RemediationFeedback"] | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -636,6 +1310,62 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** VoiceProsodySignals */
+        VoiceProsodySignals: {
+            /**
+             * Transcript
+             * @description Transcribed student audio.
+             * @default
+             */
+            transcript: string;
+            /**
+             * Speech Rate Wpm
+             * @description Calculated words per minute.
+             * @default 0
+             */
+            speech_rate_wpm: number;
+            /**
+             * Hesitation Pause Count
+             * @description Inter-word pauses > 1.5s.
+             * @default 0
+             */
+            hesitation_pause_count: number;
+            /**
+             * Max Pause Sec
+             * @description Longest pause duration in seconds.
+             * @default 0
+             */
+            max_pause_sec: number;
+            /**
+             * Filler Word Ratio
+             * @description Ratio of filler words to total words.
+             * @default 0
+             */
+            filler_word_ratio: number;
+            /**
+             * Self Correction Count
+             * @description Detected phrase restarts or self-corrections.
+             * @default 0
+             */
+            self_correction_count: number;
+            /**
+             * Monotone Recitation Flag
+             * @description Flag for high-speed unreflective recall.
+             * @default false
+             */
+            monotone_recitation_flag: boolean;
+            /**
+             * Fluency Signal
+             * @description Qualitative speech fluency classification.
+             */
+            fluency_signal?: string | null;
+            /**
+             * Total Words
+             * @description Total word count in transcription.
+             * @default 0
+             */
+            total_words: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -645,6 +1375,37 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_student_analytics_api_v1_students__student_id__analytics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                student_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentAnalyticsDashboard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     root__get: {
         parameters: {
             query?: never;
@@ -852,6 +1613,165 @@ export interface operations {
             };
         };
     };
+    check_understanding_api_v1_sessions__session_id__check_understanding_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnderstandingCheckResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_contingent_hint_api_v1_sessions__session_id__hint_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HintResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_turn_api_v1_sessions__session_id__submit_turn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitTurnResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_resource_chunks_api_v1_sessions__session_id__chunks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceChunk"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    self_guided_inject_api_v1_sessions__session_id__self_guided_inject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfGuidedInjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfGuidedInjectResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     analyze_voice_api_v1_voice_analyze_post: {
         parameters: {
             query?: never;
@@ -874,6 +1794,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_mini_exam_api_v1_sessions__session_id__mini_exam_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MiniExamPayload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_mini_exam_api_v1_sessions__session_id__mini_exam_submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExamSubmitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExamResult"];
                 };
             };
             /** @description Validation Error */

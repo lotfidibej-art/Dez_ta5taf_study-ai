@@ -21,6 +21,9 @@ import { SessionOnboardingModal } from "@/components/SessionOnboardingModal";
 import { BaselineDiagnosticCard } from "@/components/BaselineDiagnosticCard";
 import { ConceptProgressStrip } from "@/components/ConceptProgressStrip";
 import { FoundationBoard } from "@/components/FoundationBoard";
+import { FadedWorkspace } from "@/components/FadedWorkspace";
+import { ChallengeStage } from "@/components/ChallengeStage";
+import { SelfGuidedReader } from "@/components/SelfGuidedReader";
 
 export default function AdaptiveLearningPlatformPage() {
   // System Health State
@@ -40,6 +43,7 @@ export default function AdaptiveLearningPlatformPage() {
   const [contextSlice, setContextSlice] = useState<Record<string, unknown> | null>(null);
   const [isSliceDrawerOpen, setIsSliceDrawerOpen] = useState<boolean>(false);
   const [sliceLoading, setSliceLoading] = useState<boolean>(false);
+  const [showReader, setShowReader] = useState<boolean>(false);
 
   // Quick Mock Controls
   const [studentId, setStudentId] = useState<string>("student_dev_01");
@@ -53,7 +57,7 @@ export default function AdaptiveLearningPlatformPage() {
   const [redisMessage, setRedisMessage] = useState<string | null>(null);
 
   // Interactive Faded Step State
-  const [userFadedInput, setUserFadedInput] = useState<string>("");
+
   const [showFlawAnswer, setShowFlawAnswer] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
 
@@ -97,7 +101,6 @@ export default function AdaptiveLearningPlatformPage() {
     setInitialRating(rating);
     setError(null);
     setShowFlawAnswer(false);
-    setUserFadedInput("");
     setDiagnosticQuestions([]);
     setLastEvaluation(null);
 
@@ -208,240 +211,47 @@ export default function AdaptiveLearningPlatformPage() {
     );
   };
 
-  const renderFadedWorkspace = (data: FadedWorkspacePayload) => (
-    <div className="border border-amber-200 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800 rounded-2xl p-6 shadow-sm space-y-6">
-      <div className="flex items-center justify-between border-b border-amber-200 dark:border-amber-800 pb-3">
-        <div>
-          <span className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-            Mastery 0.40 – 0.75 • Guided Practice
-          </span>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Faded Worked Example Workspace
-          </h3>
-        </div>
-        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-          Agent 6: Scaffolding
-        </span>
-      </div>
+  const renderFadedWorkspace = (data: FadedWorkspacePayload) => {
+    if (!session) return null;
+    return (
+      <FadedWorkspace
+        payload={data}
+        session={session}
+        onTurnSubmitted={(resp) => {
+          setSession(resp.session);
+          setAction(resp.action);
+        }}
+      />
+    );
+  };
 
-      <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-          Problem Objective:
-        </span>
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mt-1">
-          {data.problem_statement}
-        </p>
-      </div>
+  const renderMisconceptionTrap = (data: MisconceptionTrapPayload) => {
+    if (!session) return null;
+    return (
+      <ChallengeStage
+        payload={data}
+        session={session}
+        onTurnSubmitted={(resp) => {
+          setSession(resp.session);
+          setAction(resp.action);
+        }}
+      />
+    );
+  };
 
-      <div className="space-y-4">
-        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-          Guided Steps:
-        </h4>
-        {data.steps.map((step, idx) => {
-          const isWorked = step.step_type === "WORKED";
-          return (
-            <div
-              key={idx}
-              className={`p-4 rounded-xl border transition ${
-                isWorked
-                  ? "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
-                  : "bg-amber-100/60 dark:bg-amber-900/40 border-amber-400 dark:border-amber-600 shadow-sm"
-              }`}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      isWorked
-                        ? "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-                        : "bg-amber-500 text-white"
-                    }`}
-                  >
-                    {idx + 1}
-                  </span>
-                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {String(step.label || `Step ${idx + 1}`)}
-                  </span>
-                </div>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded font-mono ${
-                    isWorked
-                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
-                      : "bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100 font-bold"
-                  }`}
-                >
-                  {isWorked ? "WORKED" : "FADED • COMPLETE THIS"}
-                </span>
-              </div>
-
-              {isWorked ? (
-                <pre className="p-3 rounded-lg bg-gray-950 text-emerald-400 font-mono text-xs overflow-x-auto">
-                  {String(step.code || "")}
-                </pre>
-              ) : (
-                <div className="space-y-2 mt-2">
-                  <pre className="p-3 rounded-lg bg-gray-950 text-amber-300 font-mono text-xs overflow-x-auto">
-                    {String(step.code || "return n + _______")}
-                  </pre>
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      placeholder="Type the missing recursive call..."
-                      value={userFadedInput}
-                      onChange={(e) => setUserFadedInput(e.target.value)}
-                      className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => alert(`Submitted response: ${userFadedInput}`)}
-                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold"
-                    >
-                      Check Answer
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {step.annotation ? (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 italic">
-                  Note: {String(step.annotation)}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-
-      {data.active_hint && (
-        <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl text-xs space-y-1">
-          <span className="font-semibold text-blue-800 dark:text-blue-300">
-            🔍 Level {String(data.active_hint.level || 1)} Contingent Hint:
-          </span>
-          <p className="text-blue-700 dark:text-blue-200">
-            {String(data.active_hint.hint_text || JSON.stringify(data.active_hint))}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderMisconceptionTrap = (data: MisconceptionTrapPayload) => (
-    <div className="border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 dark:border-rose-800 rounded-2xl p-6 shadow-sm space-y-6">
-      <div className="flex items-center justify-between border-b border-rose-200 dark:border-rose-800 pb-3">
-        <div>
-          <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-            Mastery &gt; 0.75 • Deep Mastery Challenge
-          </span>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Adversarial Misconception Trap
-          </h3>
-        </div>
-        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200">
-          Agent 7: Adversarial
-        </span>
-      </div>
-
-      <div className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
-        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-          Challenge Scenario:
-        </span>
-        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mt-1">
-          {data.scenario_intro}
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex justify-between items-center">
-          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">
-            Flawed Artifact ({data.artifact_language}):
-          </span>
-          <span className="text-xs text-rose-600 font-semibold">
-            ⚠️ Contains 1 Subtle Conceptual Flaw
-          </span>
-        </div>
-        <pre className="p-4 rounded-xl bg-gray-950 text-rose-300 font-mono text-xs overflow-x-auto border border-rose-900/50">
-          {data.flawed_artifact}
-        </pre>
-      </div>
-
-      <div className="pt-2 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setShowFlawAnswer(!showFlawAnswer)}
-          className="text-xs font-semibold text-rose-600 hover:text-rose-700 underline"
-        >
-          {showFlawAnswer ? "Hide Hidden Flaw Tag" : "Reveal Ground-Truth Flaw Tag"}
-        </button>
-
-        {showFlawAnswer && (
-          <span className="px-3 py-1 bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-100 rounded-lg text-xs font-mono font-bold">
-            {data.hidden_flaw_tag}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderProtegeStage = (data: ProtegeStagePayload) => (
-    <div className="border border-purple-200 bg-purple-50/50 dark:bg-purple-950/20 dark:border-purple-800 rounded-2xl p-6 shadow-sm space-y-6">
-      <div className="flex items-center justify-between border-b border-purple-200 dark:border-purple-800 pb-3">
-        <div>
-          <span className="text-xs font-semibold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-            Mastery &gt; 0.75 • Protégé Mode
-          </span>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Teach the AI Student (Voice Analysis Enabled)
-          </h3>
-        </div>
-        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-          Agent 7: Protégé Voice
-        </span>
-      </div>
-
-      <div className="p-4 bg-white dark:bg-gray-900 border-l-4 border-purple-500 rounded-r-xl">
-        <p className="text-xs font-bold text-purple-600 uppercase tracking-wider">
-          AI Student Persona Asks:
-        </p>
-        <p className="text-base font-semibold text-gray-900 dark:text-gray-100 mt-1 italic">
-          &ldquo;{data.ai_persona_question}&rdquo;
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase">
-          Required Causal Explanation Points:
-        </h4>
-        <ul className="space-y-1.5">
-          {data.target_explanation_points.map((pt, idx) => (
-            <li key={idx} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-              <span className="text-purple-500 font-bold">✓</span>
-              <span>{pt}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="pt-2 flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => setIsRecording(!isRecording)}
-          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
-            isRecording
-              ? "bg-red-600 text-white animate-pulse"
-              : "bg-purple-600 hover:bg-purple-700 text-white"
-          }`}
-        >
-          <span>🎙️</span>
-          <span>{isRecording ? "Listening & Extracting Prosody..." : "Record Voice Answer"}</span>
-        </button>
-        {isRecording && (
-          <span className="text-xs text-gray-500 animate-pulse">
-            Analyzing speech rate, pauses, and hesitation metrics via faster-whisper...
-          </span>
-        )}
-      </div>
-    </div>
-  );
+  const renderProtegeStage = (data: ProtegeStagePayload) => {
+    if (!session) return null;
+    return (
+      <ChallengeStage
+        payload={data}
+        session={session}
+        onTurnSubmitted={(resp) => {
+          setSession(resp.session);
+          setAction(resp.action);
+        }}
+      />
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
@@ -682,7 +492,7 @@ export default function AdaptiveLearningPlatformPage() {
                 </button>
               </div>
 
-              <div className="pt-1">
+              <div className="pt-1 flex flex-col gap-2">
                 <button
                   type="button"
                   disabled={redisReloading}
@@ -690,6 +500,15 @@ export default function AdaptiveLearningPlatformPage() {
                   className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium disabled:opacity-50"
                 >
                   {redisReloading ? "Reloading..." : "Reload from Redis Cache"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowReader(!showReader)}
+                  className="w-full px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <span>📖</span>
+                  <span>{showReader ? "Hide Document Reader" : "Open Document Reader"}</span>
                 </button>
               </div>
 
@@ -742,6 +561,19 @@ export default function AdaptiveLearningPlatformPage() {
 
               {/* Active Pedagogical Component */}
               {action && renderActionComponent(action)}
+
+              {/* Self-Guided Document Reader */}
+              {showReader && session && (
+                <SelfGuidedReader
+                  session={session}
+                  onSnippetInjected={(resp) => {
+                    setSession(resp.session);
+                    setAction(resp.action);
+                    setShowReader(false);
+                  }}
+                  onClose={() => setShowReader(false)}
+                />
+              )}
 
               {/* 1-Hop Slicer Context Drawer */}
               {isSliceDrawerOpen && contextSlice && (

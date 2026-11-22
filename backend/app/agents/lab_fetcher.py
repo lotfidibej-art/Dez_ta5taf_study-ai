@@ -46,8 +46,8 @@ def _get_or_compute_lab_embeddings(labs: List[Dict[str, Any]]) -> List[np.ndarra
     ml_service = LocalMLService.get_instance()
     texts = [f"{lab['title']}: {lab['description']}" for lab in labs]
     try:
-        embeddings = ml_service.embed_batch(texts)
-        _CACHED_LAB_EMBEDDINGS = embeddings
+        embeddings = ml_service.embed_text(texts)
+        _CACHED_LAB_EMBEDDINGS = [np.array(e, dtype=np.float32) for e in embeddings]
         logger.info("Pre-computed %d lab embeddings", len(embeddings))
     except Exception as e:
         logger.error("Error computing lab embeddings: %s", e)
@@ -91,7 +91,10 @@ def fetch_interactive_lab(
     ml_service = LocalMLService.get_instance()
     concept_query = f"{active_concept.title}. {active_concept.summary_hook or ''}".strip()
     try:
-        concept_vec = ml_service.embed_text(concept_query)
+        concept_vecs = ml_service.embed_text([concept_query])
+        if not concept_vecs:
+            return None
+        concept_vec = np.array(concept_vecs[0], dtype=np.float32)
     except Exception as e:
         logger.warning("Agent 5: Failed to embed concept query (%s): %s", concept_query, e)
         return None
@@ -100,26 +103,33 @@ def fetch_interactive_lab(
 
     best_lab: Optional[Dict[str, Any]] = None
     best_score: float = -1.0
+    domain_fallback_lab: Optional[Dict[str, Any]] = None
 
     for lab, emb in zip(labs, lab_embeddings):
         score = _cosine_similarity(concept_vec, emb)
         # Slight domain affinity bonus if domain matches
-        if domain and lab.get("domain") == domain:
-            score += 0.05
+        if domain and lab.get("domain", "").lower() == domain.lower():
+            score += 0.08
+            if domain_fallback_lab is None:
+                domain_fallback_lab = lab
         if score > best_score:
             best_score = score
             best_lab = lab
 
     logger.info(
-        "Agent 5: Best lab match for '%s' is '%s' (similarity=%.3f, threshold=0.62)",
+        "Agent 5: Best lab match for '%s' is '%s' (similarity=%.3f, threshold=0.50)",
         active_concept.title,
         best_lab["title"] if best_lab else "None",
         best_score,
     )
 
-    if best_score < 0.62 or best_lab is None:
-        logger.info("Agent 5: No interactive lab crossed the 0.62 similarity threshold.")
-        return None
+    if best_score < 0.50 or best_lab is None:
+        if domain_fallback_lab:
+            logger.info("Agent 5: Using domain fallback lab '%s'", domain_fallback_lab["title"])
+            best_lab = domain_fallback_lab
+        else:
+            logger.info("Agent 5: No interactive lab crossed the threshold and no domain fallback found.")
+            return None
 
     # Step 2: Tailor 1-sentence experiment_goal via fast LLM tier
     client = llm or get_llm_client()

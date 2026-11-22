@@ -41,7 +41,10 @@ class GeminiLLMClient:
             try:
                 from google import genai
 
-                self._client = genai.Client(api_key=self.api_key)
+                self._client = genai.Client(
+                    api_key=self.api_key,
+                    http_options={"timeout": 12000},
+                )
                 logger.info(
                     "GeminiLLMClient initialized (fast=%s, reasoning=%s)",
                     self.fast_model,
@@ -63,7 +66,10 @@ class GeminiLLMClient:
                 raise ValueError(
                     "GEMINI_API_KEY environment variable is missing or using placeholder."
                 )
-            self._client = genai.Client(api_key=api_key)
+            self._client = genai.Client(
+                api_key=api_key,
+                http_options={"timeout": 12000},
+            )
         return self._client
 
     def generate_structured(
@@ -141,6 +147,23 @@ class GeminiLLMClient:
             except Exception as e:
                 last_error = e
                 err_str = str(e).lower()
+
+                # If reasoning model hits 503 (high demand) or 429, fall back to fast model immediately
+                if tier == "reasoning" and model_name != self.fast_model and any(code in err_str for code in ["503", "429", "unavailable"]):
+                    logger.warning(
+                        "Reasoning model %s unavailable (%s). Immediately falling back to %s...",
+                        model_name,
+                        e,
+                        self.fast_model,
+                    )
+                    return self.generate_structured(
+                        prompt=prompt,
+                        schema=schema,
+                        tier="fast",
+                        system_instruction=system_instruction,
+                        temperature=temperature,
+                    )
+
                 is_transient = any(
                     err in err_str for err in ["429", "503", "resource_exhausted", "rate_limit", "quota"]
                 )

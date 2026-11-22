@@ -192,35 +192,63 @@ def extract_concept_dag(
         final_nodes[0].status = "ACTIVE"
 
     # ==========================================================================
-    # Link Resource Chunks in PostgreSQL to Closest Concept Node
+    # Persist Concept DAG Nodes to PostgreSQL concept_nodes & Link Resource Chunks
     # ==========================================================================
-    if chunks and final_nodes:
+    if final_nodes:
         try:
+            import json
             ml_service = LocalMLService.get_instance()
             concept_texts = [f"{n.title}. {n.summary_hook or ''}" for n in final_nodes]
             concept_embeddings = np.array(ml_service.embed_text(concept_texts))  # Shape (N, 384)
 
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT chunk_id, embedding FROM resource_chunks WHERE session_id = %s",
-                        (session_id,),
-                    )
-                    chunk_rows = cur.fetchall()
+                    # 1. Persist DAG concept nodes to PostgreSQL concept_nodes table
+                    for i, node in enumerate(final_nodes):
+                        emb_list = concept_embeddings[i].tolist()
+                        metadata = {
+                            "concept_id": node.concept_id,
+                            "prerequisites": node.prerequisites,
+                            "summary_hook": node.summary_hook,
+                            "session_id": session_id,
+                            "mastery_rating": node.mastery_rating,
+                            "status": node.status,
+                            "attempts": node.attempts,
+                        }
+                        cur.execute(
+                            """
+                            INSERT INTO concept_nodes (domain, concept_name, content, embedding, metadata)
+                            VALUES (%s, %s, %s, %s, %s)
+                            """,
+                            (
+                                domain,
+                                node.title,
+                                f"{node.title}: {node.summary_hook or ''}",
+                                emb_list,
+                                json.dumps(metadata),
+                            ),
+                        )
 
-                    for chunk_id, chunk_emb in chunk_rows:
-                        if chunk_emb is not None:
-                            c_emb = np.array(chunk_emb)
-                            # Cosine similarity (both are unit normalized)
-                            sims = np.dot(concept_embeddings, c_emb)
-                            best_idx = int(np.argmax(sims))
-                            best_concept_id = final_nodes[best_idx].concept_id
-                            cur.execute(
-                                "UPDATE resource_chunks SET concept_id = %s WHERE chunk_id = %s",
-                                (best_concept_id, chunk_id),
-                            )
-            logger.info("Linked %d resource chunks to closest concept nodes in PostgreSQL", len(chunks))
+                    # 2. Link Resource Chunks in PostgreSQL to closest Concept Node
+                    if chunks:
+                        cur.execute(
+                            "SELECT chunk_id, embedding FROM resource_chunks WHERE session_id = %s",
+                            (session_id,),
+                        )
+                        chunk_rows = cur.fetchall()
+
+                        for chunk_id, chunk_emb in chunk_rows:
+                            if chunk_emb is not None:
+                                c_emb = np.array(list(chunk_emb), dtype=np.float32)
+                                sims = np.dot(concept_embeddings, c_emb)
+                                best_idx = int(np.argmax(sims))
+                                best_concept_id = final_nodes[best_idx].concept_id
+                                cur.execute(
+                                    "UPDATE resource_chunks SET concept_id = %s WHERE chunk_id = %s",
+                                    (best_concept_id, chunk_id),
+                                )
+            logger.info("Persisted %d DAG concept nodes and linked %d resource chunks in PostgreSQL", len(final_nodes), len(chunks))
         except Exception as e:
-            logger.warning("Failed to link chunks to concept nodes: %s", e)
+            logger.warning("Failed to persist concept nodes or link chunks in PostgreSQL: %s", e, exc_info=True)
 
     return final_nodes
